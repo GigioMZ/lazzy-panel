@@ -1,0 +1,67 @@
+# Parámetros del negocio. Los marcados ESTIMADO deben confirmarse con la contadora.
+[empresa]
+rut = "00000000-0"
+iva = 0.19
+ppm_tasa = 0.0          # PENDIENTE: tasa PPM que declara la contadora en el F29
+
+# Costos fijos mensuales (CLP). "desde" permite cambiar el monto en el tiempo.
+[[costo_fijo]]
+nombre = "Concepto"
+categoria = "remuneraciones"
+monto = 0
+desde = "2025-12"
+
+[[costo_fijo]]
+nombre = "Concepto"
+categoria = "remuneraciones"
+monto = 0
+desde = "2025-12"
+
+[[costo_fijo]]
+nombre = "Concepto"
+categoria = "servicios"
+monto = 0
+desde = "2025-12"
+
+[[costo_fijo]]
+nombre = "Concepto"
+categoria = "sandwiches"
+monto = 0
+desde = "2025-12"
+
+[[costo_fijo]]
+nombre = "Concepto"
+categoria = "honorarios"
+monto = 0
+desde = "2025-12"
+
+# Clasificación de proveedores por RUT -> categoría del estado de resultados.
+# grupos: costo_venta | gasto_operacional | sin_clasificar
+[proveedores]
+"11111111-1" = "cafe"   # RUT proveedor -> categoría
+
+[categorias]
+cafe = "costo_venta"
+leche = "costo_venta"
+te = "costo_venta"
+pasteleria = "costo_venta"
+sandwiches = "costo_venta"
+bebidas = "costo_venta"
+envases = "costo_venta"
+otros_insumos = "costo_venta"
+comision_tarjetas = "gasto_operacional"
+comision_delivery = "gasto_operacional"
+seguridad = "gasto_operacional"
+telecom = "gasto_operacional"
+servicios = "gasto_operacional"
+marketing = "gasto_operacional"
+mantencion = "gasto_operacional"
+otros_gastos = "gasto_operacional"
+remuneraciones = "personal"
+honorarios = "gasto_operacional"
+
+# Costo neto unitario por producto (nombre exacto de FUDO).
+# OJO: Ana González factura con precios unitarios CON IVA; aquí están convertidos a neto (/1,19).
+# fuente: "factura" = precio de una factura de nov-2026; "receta_antigua" = planilla de recetas (desactualizada).
+[costo_producto]
+"Producto ejemplo" = { costo = 1000, fuente = "factura" }
