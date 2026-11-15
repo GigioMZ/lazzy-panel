@@ -13,9 +13,17 @@ pytest -q
 Los imports son idempotentes. Parámetros del negocio: copiar `config/lazzy.example.toml` a `config/lazzy.toml` (no se versiona).
 Los datos (`data/`) no se versionan.
 
+## Panel web
+```
+python -m lazzy.cli seed                 # carga inicial desde config/lazzy.toml (o subir el .toml en /cargar)
+python -m lazzy.cli user guillermo       # crea usuario
+uvicorn lazzy.web:app --port 8765
+```
+Servidor: `sudo sh deploy/install.sh panel.lazzycoffee.cl` (Ubuntu + Caddy + systemd; se actualiza solo desde GitHub cada 5 min).
+
 ## Estado
 - [x] Fase 1: base de datos, importadores FUDO/SII, estado de resultados, IVA, punto de equilibrio
 - [x] Fase 1b: ventas por producto + costos -> margen por producto
-- [ ] Fase 2: panel web con login
+- [x] Fase 2: panel web con login (resumen, resultados, productos y recetas, insumos, compras, costos fijos, impuestos, carga de archivos)
 - [ ] Fase 3: bot de Telegram (facturas, cierre diario, alertas)
 - [ ] Fase 4: sincronización API FUDO (requiere Plan Pro)

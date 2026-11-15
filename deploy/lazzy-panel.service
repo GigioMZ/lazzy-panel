@@ -1,0 +1,14 @@
+[Unit]
+Description=Lazzy Panel
+After=network.target
+
+[Service]
+User=lazzy
+WorkingDirectory=/opt/lazzy-panel
+Environment=LAZZY_DB=/var/lib/lazzy/lazzy.db
+Environment=LAZZY_HTTPS=1
+ExecStart=/opt/lazzy-panel/.venv/bin/uvicorn lazzy.web:app --host 127.0.0.1 --port 8765 --proxy-headers --forwarded-allow-ips=127.0.0.1
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

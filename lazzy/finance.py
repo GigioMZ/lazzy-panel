@@ -10,9 +10,68 @@ import tomllib
 from collections import defaultdict
 
 
+CATEGORIAS = {  # categoría -> grupo del estado de resultados
+    "cafe": "costo_venta", "leche": "costo_venta", "te": "costo_venta", "pasteleria": "costo_venta",
+    "sandwiches": "costo_venta", "bebidas": "costo_venta", "envases": "costo_venta",
+    "otros_insumos": "costo_venta",
+    "remuneraciones": "personal",
+    "comision_tarjetas": "gasto_operacional", "comision_delivery": "gasto_operacional",
+    "seguridad": "gasto_operacional", "telecom": "gasto_operacional", "servicios": "gasto_operacional",
+    "marketing": "gasto_operacional", "mantencion": "gasto_operacional", "honorarios": "gasto_operacional",
+    "otros_gastos": "gasto_operacional",
+    "activo_fijo": "inversion",          # equipos: no es gasto del mes
+}
+
+
 def load_config(path="config/lazzy.toml"):
     with open(path, "rb") as f:
         return tomllib.load(f)
+
+
+def seed_from_config(con, cfg):
+    """Carga inicial de parámetros desde el toml. No pisa lo ya editado en el panel."""
+    for k in ("iva", "ppm_tasa"):
+        con.execute("INSERT OR IGNORE INTO parametro VALUES (?,?)", (k, str(cfg["empresa"].get(k, 0))))
+    for rut, cat in cfg.get("proveedores", {}).items():
+        con.execute("INSERT OR IGNORE INTO proveedor(rut, categoria) VALUES (?,?)", (rut, cat))
+    if not con.execute("SELECT 1 FROM costo_fijo LIMIT 1").fetchone():
+        for c in cfg.get("costo_fijo", []):
+            con.execute("INSERT INTO costo_fijo(nombre,categoria,monto,desde,hasta) VALUES (?,?,?,?,?)",
+                        (c["nombre"], c["categoria"], c["monto"], c["desde"], c.get("hasta")))
+    for prod, c in cfg.get("costo_producto", {}).items():
+        con.execute("INSERT OR IGNORE INTO producto_costo(producto,costo,fuente) VALUES (?,?,?)",
+                    (prod, c["costo"], c["fuente"]))
+    for i in cfg.get("insumo", []):
+        con.execute("INSERT OR IGNORE INTO insumo(nombre,unidad,cantidad_formato,precio_formato) VALUES (?,?,?,?)",
+                    (i["nombre"], i["unidad"], i["cantidad"], i["precio"]))
+    ids = {r["nombre"]: r["id"] for r in con.execute("SELECT id, nombre FROM insumo")}
+    for prod, lineas in cfg.get("receta", {}).items():
+        if con.execute("SELECT 1 FROM receta WHERE producto=? LIMIT 1", (prod,)).fetchone():
+            continue
+        for nombre, cant in lineas.items():
+            con.execute("INSERT INTO receta VALUES (?,?,?)", (prod, ids[nombre], cant))
+    con.commit()
+
+
+def costo_receta(con, producto):
+    r = con.execute("SELECT SUM(r.cantidad * i.precio_formato / i.cantidad_formato) c, COUNT(*) n "
+                    "FROM receta r JOIN insumo i ON i.id = r.insumo_id WHERE r.producto=?", (producto,)).fetchone()
+    return round(r["c"]) if r["n"] else None
+
+
+def load_cfg(con):
+    """Configuración vigente leída de la base (lo que se edita en el panel)."""
+    par = {r["clave"]: r["valor"] for r in con.execute("SELECT * FROM parametro")}
+    costos = {r["producto"]: {"costo": r["costo"], "fuente": r["fuente"]}
+              for r in con.execute("SELECT * FROM producto_costo")}
+    for r in con.execute("SELECT DISTINCT producto FROM receta"):
+        costos[r["producto"]] = {"costo": costo_receta(con, r["producto"]), "fuente": "receta"}
+    return {
+        "empresa": {"iva": float(par.get("iva", 0.19)), "ppm_tasa": float(par.get("ppm_tasa", 0))},
+        "costo_fijo": [dict(r) | {"hasta": r["hasta"] or "9999-12"} for r in con.execute("SELECT * FROM costo_fijo")],
+        "proveedores": {r["rut"]: r["categoria"] for r in con.execute("SELECT rut, categoria FROM proveedor")},
+        "categorias": CATEGORIAS, "costo_producto": costos,
+    }
 
 
 def _sign(tipo_doc):
@@ -77,13 +136,14 @@ def pnl_mes(con, periodo, cfg):
     n = v["neto"]
     pct = lambda x: round(100 * x / n, 1) if n else 0.0
     margen_bruto = n - cv
-    resultado = margen_bruto - pers - gop - sc
+    resultado = margen_bruto - pers - gop - sc     # "inversion" (activo fijo) no resta al resultado
     fijos = pers + sum(m for c, m in lineas.get("gasto_operacional", {}).items() if c != "comision_tarjetas")
     mc = 1 - (cv + lineas.get("gasto_operacional", {}).get("comision_tarjetas", 0)) / n if n else 0
     return {
         "periodo": periodo, "ventas": v, "lineas": {g: dict(d) for g, d in lineas.items()},
         "costo_venta": cv, "margen_bruto": margen_bruto, "personal": pers, "gasto_operacional": gop,
-        "sin_clasificar": sc, "sin_clasificar_detalle": sin, "resultado_operacional": resultado,
+        "sin_clasificar": sc, "sin_clasificar_detalle": sin, "inversion": tot.get("inversion", 0),
+        "tiene_compras": bool(con.execute("SELECT 1 FROM compra WHERE periodo=? LIMIT 1", (periodo,)).fetchone()), "resultado_operacional": resultado,
         "pct": {"costo_venta": pct(cv), "margen_bruto": pct(margen_bruto), "personal": pct(pers),
                 "prime_cost": pct(cv + pers), "gasto_operacional": pct(gop), "resultado": pct(resultado)},
         "equilibrio": {"venta_neta_mes": round(fijos / mc) if mc > 0 else None,
@@ -136,3 +196,7 @@ def margen_productos(con, desde, hasta, cfg):
     total = sum(d["neto"] for d in rows)
     return {"productos": sorted(rows, key=lambda d: -d["neto"]),
             "cobertura_pct": round(100 * sum(d["neto"] for d in con_costo) / total, 1) if total else 0.0}
+
+
+def periodos(con):
+    return [r[0] for r in con.execute("SELECT DISTINCT substr(fecha,1,7) FROM venta_hora ORDER BY 1")]

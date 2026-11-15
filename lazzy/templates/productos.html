@@ -1,0 +1,12 @@
+{% extends "base.html" %}{% block title %}Productos{% endblock %}{% block main %}
+<div class="bar"><h1 style="margin:0">Margen por producto</h1><form class="inline">Desde <select name="desde">{% for x in ps %}<option {{'selected' if x==desde}} value="{{x}}">{{x|mes}}</option>{% endfor %}</select>
+hasta <select name="hasta">{% for x in ps %}<option {{'selected' if x==hasta}} value="{{x}}">{{x|mes}}</option>{% endfor %}</select><button>Ver</button></form>
+<span>Costeado: <b>{{r.cobertura_pct}}%</b> de la venta</span></div>
+<div class="note"><b>Estrella</b>: se vende mucho y deja buen margen, protégelo. <b>Caballo</b>: se vende mucho pero deja poco, sube precio o baja costo. <b>Puzzle</b>: buen margen pero se vende poco, promuévelo. <b>Perro</b>: ni lo uno ni lo otro, evalúa sacarlo.</div>
+<div class="card"><table><tr><th>Producto</th><th class="l">Categoría</th><th>Cant.</th><th>Venta neta</th><th>Precio neto</th><th>Costo neto</th><th>Margen</th><th>Aporte</th><th></th><th class="l">Costo</th></tr>
+{% for d in r.productos %}<tr><td>{{d.producto}}</td><td class="l">{{d.categoria}}</td><td>{{d.cantidad|num}}</td><td>{{d.neto|clp}}</td><td>{{d.precio_neto|clp}}</td>
+<td>{{d.costo|clp}}</td><td class="{{'neg' if d.margen_pct is not none and d.margen_pct<30}}">{{d.margen_pct~'%' if d.margen_pct is not none else '—'}}</td><td>{{d.contribucion|clp}}</td>
+<td>{% if d.clase %}<span class="tag {{d.clase}}">{{d.clase}}</span>{% else %}<span class="tag">sin costo</span>{% endif %}</td>
+<td class="l">{% if d.fuente=="receta" %}<a href="/receta?p={{d.producto|urlencode}}">receta</a>{% else %}
+<form class="inline" method="post" action="/productos/costo"><input type="hidden" name="csrf" value="{{csrf}}"><input type="hidden" name="producto" value="{{d.producto}}"><input type="hidden" name="volver" value="{{request.url.path}}?{{request.url.query}}">
+<input class="n" name="costo" value="{{d.costo or ''}}" placeholder="costo" inputmode="numeric"><button class="sec">OK</button></form> <a href="/receta?p={{d.producto|urlencode}}">receta</a>{% endif %}</td></tr>{% endfor %}</table></div>{% endblock %}

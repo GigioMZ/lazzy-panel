@@ -1,0 +1,8 @@
+{% extends "base.html" %}{% block title %}Cargar datos{% endblock %}{% block main %}
+<h1>Cargar datos</h1>{% for k,m in msgs %}<p class="msg {{k}}">{{m}}</p>{% endfor %}
+<div class="card"><form method="post" enctype="multipart/form-data"><input type="hidden" name="csrf" value="{{csrf}}"><input type="file" name="archivos" multiple required accept=".xlsx,.csv,.toml"> <button>Subir</button></form>
+<p>Puedes subir varios a la vez; el panel reconoce cada uno. Volver a subir un archivo no duplica nada.</p>
+<table><tr><th>Qué</th><th class="l">De dónde sale</th><th class="l">Cargado hasta</th></tr>
+<tr><td>Ventas</td><td class="l">FUDO → Reportes → Ventas → exportar Excel</td><td class="l">{{estado.ventas[0] or '—'}} a {{estado.ventas[1] or '—'}}</td></tr>
+<tr><td>Ventas por producto</td><td class="l">FUDO → Reportes → Productos → exportar Excel</td><td class="l">{{estado.productos[0] or '—'}} a {{estado.productos[1] or '—'}}</td></tr>
+<tr><td>Compras</td><td class="l">SII → Registro de Compras y Ventas → Compras → descargar detalle (un CSV por mes)</td><td class="l">{{estado.compras|join(', ') or '—'}}</td></tr></table></div>{% endblock %}

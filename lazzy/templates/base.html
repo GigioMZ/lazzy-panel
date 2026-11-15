@@ -1,0 +1,30 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex"><title>{% block title %}Panel{% endblock %} · Lazzy Coffee</title>
+<style>
+:root{--bg:#f6f4ef;--card:#fff;--ink:#1f1d1a;--mut:#6f6a61;--line:#e4dfd5;--acc:#3b5d50;--ok:#2e7d4f;--warn:#b7791f;--bad:#b3392f}
+*{box-sizing:border-box}body{margin:0;font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--ink)}
+header{background:var(--ink);color:#fff;padding:0 20px;display:flex;gap:18px;align-items:center;flex-wrap:wrap}
+header b{padding:14px 0;letter-spacing:.04em}nav{display:flex;gap:2px;flex-wrap:wrap;flex:1}
+nav a{color:#cfc9bd;text-decoration:none;padding:14px 10px;font-size:14px}nav a.on,nav a:hover{color:#fff;box-shadow:inset 0 -3px var(--acc)}
+main{max-width:1180px;margin:22px auto;padding:0 16px}h1{font-size:22px;margin:0 0 14px}h2{font-size:16px;margin:0 0 10px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:16px;overflow-x:auto}
+.grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));margin-bottom:16px}
+.kpi{background:var(--card);border:1px solid var(--line);border-left:5px solid var(--line);border-radius:10px;padding:12px 14px}
+.kpi small{color:var(--mut);display:block}.kpi strong{font-size:22px;display:block}.kpi em{font-style:normal;font-size:13px;color:var(--mut)}
+.kpi.ok{border-left-color:var(--ok)}.kpi.warn{border-left-color:var(--warn)}.kpi.bad{border-left-color:var(--bad)}
+table{border-collapse:collapse;width:100%;font-size:14px}th,td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+th:first-child,td:first-child{text-align:left}th{color:var(--mut);font-weight:600;font-size:12px;text-transform:uppercase}
+tr.tot td{font-weight:700;background:#faf8f3}tr.sub td:first-child{padding-left:22px;color:var(--mut)}td.l,th.l{text-align:left}
+.neg{color:var(--bad)}.tag{font-size:12px;padding:2px 7px;border-radius:99px;background:#eee9df}
+.tag.estrella{background:#dcefe3;color:#1d5c38}.tag.caballo{background:#fbeccd;color:#7a4f0b}.tag.puzzle{background:#dfe8f5;color:#27456e}.tag.perro{background:#f6dcd9;color:#8a2b22}
+.note{background:#fbeccd;border:1px solid #ecd49a;border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:14px}
+.msg.ok{color:var(--ok)}.msg.bad{color:var(--bad)}
+form.inline{display:inline-flex;gap:6px;align-items:center;margin:0}input,select,button{font:inherit;padding:5px 8px;border:1px solid #cfc8ba;border-radius:6px;background:#fff}
+input.n{width:92px;text-align:right}button{background:var(--acc);color:#fff;border-color:var(--acc);cursor:pointer}button.sec{background:#fff;color:var(--ink);border-color:#cfc8ba}
+.bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}.two{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(330px,1fr))}
+a{color:var(--acc)}
+</style></head><body>
+{% if user %}<header><b>LAZZY · PANEL</b><nav>
+{% for u,t in [("/","Resumen"),("/resultados","Resultados"),("/productos","Productos"),("/insumos","Insumos"),("/compras","Compras"),("/costos-fijos","Costos fijos"),("/impuestos","Impuestos"),("/cargar","Cargar datos")] %}
+<a href="{{u}}" class="{{'on' if request.url.path==u}}">{{t}}</a>{% endfor %}</nav><a href="/logout" style="color:#cfc9bd;font-size:13px">Salir ({{user}})</a></header>{% endif %}
+<main>{% block main %}{% endblock %}</main></body></html>

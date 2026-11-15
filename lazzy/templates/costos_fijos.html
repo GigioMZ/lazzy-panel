@@ -1,0 +1,10 @@
+{% extends "base.html" %}{% block title %}Costos fijos{% endblock %}{% block main %}
+<h1>Costos fijos mensuales</h1><div class="note">Aquí va lo que no llega como factura al SII: sueldos, imposiciones, honorarios, cuentas, compras sin factura. "Desde" y "hasta" en formato AAAA-MM; para cambiar un monto, cierra el anterior con "hasta" y agrega uno nuevo.</div>
+<div class="card"><table><tr><th>Concepto</th><th class="l">Categoría</th><th>Monto mensual</th><th>Desde</th><th>Hasta</th><th></th></tr>
+{% for r in rows %}<tr><form method="post"><input type="hidden" name="csrf" value="{{csrf}}"><input type="hidden" name="id" value="{{r.id}}"><td><input name="nombre" value="{{r.nombre}}" style="width:330px"></td>
+<td class="l"><select name="categoria">{% for c in cats %}<option {{'selected' if c==r.categoria}} value="{{c}}">{{c|replace("_"," ")}}</option>{% endfor %}</select></td>
+<td><input class="n" name="monto" value="{{r.monto}}"></td><td><input class="n" name="desde" value="{{r.desde}}" pattern="\d{4}-\d{2}"></td><td><input class="n" name="hasta" value="{{r.hasta or ''}}" pattern="\d{4}-\d{2}"></td>
+<td><button class="sec">Guardar</button> <button class="sec" name="accion" value="borrar">Borrar</button></td></form></tr>{% endfor %}
+<tr><form method="post"><input type="hidden" name="csrf" value="{{csrf}}"><td><input name="nombre" placeholder="Nuevo concepto" style="width:330px" required></td><td class="l"><select name="categoria">{% for c in cats %}<option value="{{c}}">{{c|replace("_"," ")}}</option>{% endfor %}</select></td>
+<td><input class="n" name="monto" required></td><td><input class="n" name="desde" placeholder="2026-11" pattern="\d{4}-\d{2}" required></td><td><input class="n" name="hasta" pattern="\d{4}-\d{2}"></td><td><button>Agregar</button></td></form></tr></table></div>
+<div class="card"><h2>PPM</h2><form class="inline" method="post"><input type="hidden" name="csrf" value="{{csrf}}"><input type="hidden" name="accion" value="ppm">Tasa de PPM sobre la venta neta <input class="n" name="ppm" value="{{'%g'|format(ppm)}}"> % <button>Guardar</button></form></div>{% endblock %}

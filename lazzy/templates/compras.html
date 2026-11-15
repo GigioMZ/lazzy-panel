@@ -1,0 +1,9 @@
+{% extends "base.html" %}{% block title %}Compras{% endblock %}{% block main %}
+<h1>Compras y proveedores</h1>
+<div class="card"><h2>Proveedores (la categoría decide en qué línea del estado de resultados cae cada factura)</h2>
+<table><tr><th>Proveedor</th><th class="l">RUT</th><th>Facturas</th><th>Neto total</th><th class="l">Categoría</th></tr>
+{% for v in prov %}<tr><td>{{v.nombre}}</td><td class="l">{{v.rut}}</td><td>{{v.n}}</td><td>{{v.neto|clp}}</td><td class="l"><form class="inline" method="post" action="/compras/proveedor"><input type="hidden" name="csrf" value="{{csrf}}"><input type="hidden" name="rut" value="{{v.rut}}"><input type="hidden" name="nombre" value="{{v.nombre}}">
+<select name="categoria" onchange="this.form.submit()" {% if not v.cat %}style="border-color:var(--bad)"{% endif %}><option value="">— sin clasificar —</option>{% for c in cats %}<option value="{{c}}" {{'selected' if c==v.cat}}>{{c|replace("_"," ")}}</option>{% endfor %}</select></form></td></tr>{% endfor %}</table></div>
+<div class="card"><div class="bar"><h2 style="margin:0">Documentos del periodo</h2><form class="inline"><select name="periodo" onchange="this.form.submit()">{% for x in pers %}<option value="{{x}}" {{'selected' if x==per}}>{{x|mes}}</option>{% endfor %}</select></form></div>
+<table><tr><th>Fecha</th><th class="l">Proveedor</th><th>Tipo</th><th>Folio</th><th>Neto</th><th>IVA</th><th>Total</th><th class="l">Categoría</th></tr>
+{% for c in rows %}<tr><td>{{c.fecha_doc}}</td><td class="l">{{c.razon_social}}</td><td>{{'N. crédito' if c.tipo_doc==61 else 'Factura'}}</td><td>{{c.folio}}</td><td>{{c.neto|clp}}</td><td>{{c.iva_rec|clp}}</td><td>{{c.total|clp}}</td><td class="l">{{(c.cat or 'sin clasificar')|replace("_"," ")}}</td></tr>{% endfor %}</table></div>{% endblock %}

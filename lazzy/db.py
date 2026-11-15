@@ -28,13 +28,27 @@ CREATE TABLE IF NOT EXISTS compra(
 CREATE TABLE IF NOT EXISTS gasto_manual(   -- gastos sin factura electrónica (boletas, efectivo, cuentas)
   id INTEGER PRIMARY KEY, fecha TEXT NOT NULL, descripcion TEXT NOT NULL,
   categoria TEXT NOT NULL, neto INTEGER NOT NULL, iva_rec INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS proveedor(rut TEXT PRIMARY KEY, nombre TEXT, categoria TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS costo_fijo(
+  id INTEGER PRIMARY KEY, nombre TEXT NOT NULL, categoria TEXT NOT NULL, monto INTEGER NOT NULL,
+  desde TEXT NOT NULL, hasta TEXT);
+CREATE TABLE IF NOT EXISTS producto_costo(      -- costo neto unitario fijado a mano o desde factura
+  producto TEXT PRIMARY KEY, costo INTEGER NOT NULL, fuente TEXT NOT NULL, actualizado TEXT);
+CREATE TABLE IF NOT EXISTS insumo(              -- precio neto por formato de compra
+  id INTEGER PRIMARY KEY, nombre TEXT UNIQUE NOT NULL, unidad TEXT NOT NULL,
+  cantidad_formato REAL NOT NULL, precio_formato INTEGER NOT NULL, actualizado TEXT);
+CREATE TABLE IF NOT EXISTS receta(              -- si un producto tiene receta, su costo se calcula desde aquí
+  producto TEXT NOT NULL, insumo_id INTEGER NOT NULL REFERENCES insumo(id), cantidad REAL NOT NULL,
+  PRIMARY KEY(producto, insumo_id));
+CREATE TABLE IF NOT EXISTS parametro(clave TEXT PRIMARY KEY, valor TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS usuario(nombre TEXT PRIMARY KEY, hash TEXT NOT NULL, salt TEXT NOT NULL);
 """
 
 
 def connect(path="data/lazzy.db"):
     if path != ":memory:":
         Path(path).parent.mkdir(parents=True, exist_ok=True)
-    con = sqlite3.connect(path)
+    con = sqlite3.connect(path, check_same_thread=False)
     con.row_factory = sqlite3.Row
     con.executescript(SCHEMA)
     return con

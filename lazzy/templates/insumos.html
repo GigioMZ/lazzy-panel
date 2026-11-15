@@ -1,0 +1,8 @@
+{% extends "base.html" %}{% block title %}Insumos{% endblock %}{% block main %}
+<h1>Insumos</h1><div class="note">Precio neto (sin IVA) por formato de compra. Al cambiar un precio aquí se recalcula el costo de todos los productos que lo usan.</div>
+<div class="card"><table><tr><th>Insumo</th><th class="l">Formato de compra</th><th>Precio neto del formato</th><th>Costo por unidad</th><th>Recetas</th><th class="l">Actualizado</th><th></th></tr>
+{% for i in rows %}<tr><form method="post"><input type="hidden" name="csrf" value="{{csrf}}"><input type="hidden" name="id" value="{{i.id}}">
+<td><input name="nombre" value="{{i.nombre}}"></td><td class="l"><input class="n" name="cantidad" value="{{'%g'|format(i.cantidad_formato)}}"> <input name="unidad" value="{{i.unidad}}" style="width:52px"></td>
+<td><input class="n" name="precio" value="{{i.precio_formato}}" inputmode="numeric"></td><td>${{'%.1f'|format(i.precio_formato/i.cantidad_formato)}} / {{i.unidad}}</td><td>{{i.usos}}</td><td class="l">{{i.actualizado or 'carga inicial'}}</td><td><button class="sec">Guardar</button></td></form></tr>{% endfor %}
+<tr><form method="post"><input type="hidden" name="csrf" value="{{csrf}}"><td><input name="nombre" placeholder="Nuevo insumo" required></td><td class="l"><input class="n" name="cantidad" placeholder="1000" required> <input name="unidad" placeholder="g" style="width:52px" required></td>
+<td><input class="n" name="precio" placeholder="precio" required></td><td></td><td></td><td></td><td><button>Agregar</button></td></form></tr></table></div>{% endblock %}

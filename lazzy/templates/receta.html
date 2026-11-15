@@ -1,0 +1,14 @@
+{% extends "base.html" %}{% block title %}{{producto}}{% endblock %}{% block main %}
+<h1>Receta · {{producto}}</h1><p><a href="/productos">← Productos</a></p>
+<div class="grid"><div class="kpi"><small>Costo por receta</small><strong>{{total|clp}}</strong></div>
+<div class="kpi"><small>Precio neto (últimos 90 días)</small><strong>{{precio|clp}}</strong></div>
+<div class="kpi"><small>Margen</small><strong>{% if total and precio %}{{(100*(1-total/precio))|round(1)}}%{% else %}—{% endif %}</strong></div></div>
+{% if fijo and lineas %}<div class="note">Este producto tenía un costo fijo de {{fijo.costo|clp}}; al tener receta se usa el costo de la receta.</div>{% endif %}
+<div class="card"><table><tr><th>Insumo</th><th>Cantidad</th><th>Costo</th><th></th></tr>
+{% for l in lineas %}<tr><td>{{l.nombre}}</td><td><form class="inline" method="post"><input type="hidden" name="csrf" value="{{csrf}}"><input type="hidden" name="producto" value="{{producto}}"><input type="hidden" name="insumo_id" value="{{l.id}}">
+<input class="n" name="cantidad" value="{{'%g'|format(l.cantidad)}}"> {{l.unidad}} <button class="sec">OK</button></form></td><td>{{l.costo|round|int|clp}}</td>
+<td><form class="inline" method="post"><input type="hidden" name="csrf" value="{{csrf}}"><input type="hidden" name="producto" value="{{producto}}"><input type="hidden" name="insumo_id" value="{{l.id}}"><button class="sec" name="accion" value="quitar">Quitar</button></form></td></tr>{% endfor %}
+{% if not lineas %}<tr><td colspan="4" class="l">Sin receta. Agrega insumos abajo{% if fijo %} (hoy usa costo fijo de {{fijo.costo|clp}}){% endif %}.</td></tr>{% endif %}</table>
+<form class="inline" method="post" style="margin-top:12px"><input type="hidden" name="csrf" value="{{csrf}}"><input type="hidden" name="producto" value="{{producto}}">
+<select name="insumo_id">{% for i in insumos %}<option value="{{i.id}}">{{i.nombre}} ({{i.unidad}})</option>{% endfor %}</select><input class="n" name="cantidad" placeholder="cantidad" required><button>Agregar insumo</button></form>
+<p><em style="color:var(--mut)">¿Falta un insumo? Créalo en <a href="/insumos">Insumos</a>.</em></p></div>{% endblock %}

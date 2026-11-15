@@ -1,0 +1,5 @@
+{% extends "base.html" %}{% block title %}Impuestos{% endblock %}{% block main %}
+<h1>IVA y PPM por mes</h1><div class="note">Estimación: el débito se calcula desde las ventas de FUDO y el crédito desde el registro de compras del SII. El monto oficial es el del F29 que declara la contadora. PPM configurado: {{'%g'|format(ppm)}}% (<a href="/costos-fijos">cambiar</a>).</div>
+<div class="card"><table><tr><th>Mes</th><th>IVA débito (ventas)</th><th>IVA crédito (compras)</th><th>IVA a pagar</th><th>PPM</th><th>F29 estimado</th></tr>
+{% for r in rows %}<tr><td>{{r.periodo|mes}}{{' *' if not r.tiene_compras}}</td><td>{{r.debito|clp}}</td><td>{{r.credito|clp}}</td><td>{{r.iva_a_pagar|clp}}</td><td>{{r.ppm|clp}}</td><td><b>{{r.f29_estimado|clp}}</b></td></tr>{% endfor %}</table>
+<p><em style="color:var(--mut)">* sin registro de compras cargado: el crédito está en cero y el IVA a pagar sobreestimado.</em></p></div>{% endblock %}

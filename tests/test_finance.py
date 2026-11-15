@@ -1,5 +1,5 @@
 from lazzy.db import connect
-from lazzy.finance import iva_mes, margen_productos, pnl_mes
+from lazzy.finance import costo_receta, iva_mes, load_cfg, margen_productos, pnl_mes, seed_from_config
 from lazzy.importers.rcv import import_rcv_compras, periodo_from_filename
 
 CFG = {
@@ -78,3 +78,22 @@ def test_margen_productos():
     assert d["Latte"]["clase"] == "estrella" and d["Torta"]["clase"] == "perro"
     assert d["Sin costo"]["costo"] is None and d["Sin costo"]["clase"] is None
     assert r["cobertura_pct"] == round(100 * 24000 / 25000, 1)
+
+
+def test_seed_y_receta():
+    con = connect(":memory:")
+    cfg = {"empresa": {"iva": 0.19, "ppm_tasa": 0.0025}, "proveedores": {"1-9": "cafe"},
+           "costo_fijo": [{"nombre": "s", "categoria": "remuneraciones", "monto": 300, "desde": "2026-01"}],
+           "costo_producto": {"Torta": {"costo": 1500, "fuente": "factura"}, "Latte": {"costo": 1, "fuente": "x"}},
+           "insumo": [{"nombre": "Café", "unidad": "g", "cantidad": 1000, "precio": 20000},
+                      {"nombre": "Leche", "unidad": "ml", "cantidad": 1000, "precio": 1000}],
+           "receta": {"Latte": {"Café": 18, "Leche": 300}}}
+    seed_from_config(con, cfg)
+    seed_from_config(con, cfg)   # idempotente
+    assert con.execute("SELECT COUNT(*) FROM costo_fijo").fetchone()[0] == 1
+    assert costo_receta(con, "Latte") == 660 and costo_receta(con, "Torta") is None
+    c = load_cfg(con)
+    assert c["costo_producto"]["Latte"] == {"costo": 660, "fuente": "receta"}    # la receta manda sobre el costo fijo
+    assert c["costo_producto"]["Torta"]["costo"] == 1500 and c["empresa"]["ppm_tasa"] == 0.0025
+    con.execute("UPDATE insumo SET precio_formato=2000 WHERE nombre='Leche'")
+    assert load_cfg(con)["costo_producto"]["Latte"]["costo"] == 960
