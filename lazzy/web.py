@@ -177,12 +177,13 @@ def resumen(request: Request):
     dia = round(p["ventas"]["bruto"] / p["ventas"]["dias_abiertos"]) if p["ventas"]["dias_abiertos"] else 0
     eq = p["equilibrio"]["venta_bruta_dia"]
     kpi = {"var_venta": I.variacion(p["ventas"]["neto"], ctx["prev"]["ventas"]["neto"]) if ctx["prev"] else None,
+           "var_anio": I.variacion(p["ventas"]["neto"], ctx["anio"]["ventas"]["neto"]) if ctx["anio"] else None,
            "insumos": I.por_mil(p, p["costo_venta"]), "ins_sue": I.por_mil(p, p["costo_venta"] + p["personal"]),
            "e_insumos": I.estado(I.por_mil(p, p["costo_venta"]), 350, 400, False),
            "e_ins_sue": I.estado(I.por_mil(p, p["costo_venta"] + p["personal"]), 600, 650, False),
            "dia": dia, "e_dia": ("ok" if dia >= eq else "bad") if eq else None,
            "dif_prom": p["resultado_operacional"] - ctx["prom_ganancia"] if ctx["prom_ganancia"] is not None else None}
-    top = F.margen_productos(con, per, per, cfg)
+    top = F.margen_productos(con, per, per, F.load_cfg(con, F.fin_de_mes(per)))
     i = ps.index(per)
     return page(request, "resumen.html", p=p, per=per, ps=ps, v=v, des=I.desglose(p) if v["con_resultado"] else [],
                 ctx=ctx, kpi=kpi, pend=I.pendientes(con, cfg, ps), chart=json.dumps(chart), pico=pico,
@@ -210,7 +211,7 @@ def resultados(request: Request):
             ("costo_venta", "personal", "gasto_operacional", "sin_clasificar", "margen_bruto", "resultado_operacional")}
     prom.update(ventas=round(sum(p["ventas"]["neto"] for p in comp) / n), n=len(comp))
     return page(request, "resultados.html", cols=cols, grupos=grupos, lineas=cats, desde=desde, hasta=hasta, ps=ps,
-                prom=prom)
+                prom=prom, tasa=F.tasa_tarjetas(con, cfg))
 
 
 @app.get("/productos", response_class=HTMLResponse)
@@ -218,7 +219,7 @@ def productos(request: Request):
     user(request)
     con = db()
     desde, hasta, _, ps = rango(request, con, 3)
-    r = F.margen_productos(con, desde, hasta, F.load_cfg(con))
+    r = F.margen_productos(con, desde, hasta, F.load_cfg(con, F.fin_de_mes(hasta)))
     puntos = [{"x": d["cantidad"], "y": d["margen_unit"], "n": d["producto"], "c": d["contribucion"]}
               for d in r["productos"] if d["costo"] is not None]
     conteo = {g: sum(1 for d in r["productos"] if d["clase"] == g) for g in GRUPO_NOMBRE}
@@ -233,11 +234,7 @@ async def producto_costo(request: Request):
     f = await form(request)
     con = db()
     prod, costo = str(f["producto"]), str(f.get("costo", "")).replace(".", "").strip()
-    if costo:
-        con.execute("INSERT OR REPLACE INTO producto_costo VALUES (?,?,?,?)",
-                    (prod, int(costo), "manual", date.today().isoformat()))
-    else:
-        con.execute("DELETE FROM producto_costo WHERE producto=?", (prod,))
+    F.registrar_costo(con, prod, int(costo) if costo else None, "manual")
     con.commit()
     return RedirectResponse(str(f.get("volver") or "/productos"), 303)
 
@@ -288,10 +285,13 @@ async def insumos_post(request: Request):
     vals = (str(f["nombre"]).strip(), str(f["unidad"]).strip(), float(str(f["cantidad"]).replace(",", ".")),
             int(str(f["precio"]).replace(".", "")), date.today().isoformat())
     if f.get("id"):
+        iid = int(f["id"])
         con.execute("UPDATE insumo SET nombre=?, unidad=?, cantidad_formato=?, precio_formato=?, actualizado=? WHERE id=?",
-                    (*vals, int(f["id"])))
+                    (*vals, iid))
     else:
-        con.execute("INSERT INTO insumo(nombre,unidad,cantidad_formato,precio_formato,actualizado) VALUES (?,?,?,?,?)", vals)
+        iid = con.execute("INSERT INTO insumo(nombre,unidad,cantidad_formato,precio_formato,actualizado) VALUES (?,?,?,?,?)",
+                          vals).lastrowid
+    F.registrar_insumo(con, iid)
     con.commit()
     return RedirectResponse("/insumos", 303)
 
@@ -329,8 +329,10 @@ async def compras_proveedor(request: Request):
 def costos_fijos(request: Request):
     user(request)
     con = db()
+    cfg = F.load_cfg(con)
     return page(request, "costos_fijos.html", rows=[dict(r) for r in con.execute("SELECT * FROM costo_fijo ORDER BY categoria, nombre")],
-                ppm=F.load_cfg(con)["empresa"]["ppm_tasa"] * 100)
+                ppm=cfg["empresa"]["ppm_tasa"] * 100, emp=cfg["empresa"],
+                calc=F.tasa_tarjetas(con, dict(cfg, empresa=dict(cfg["empresa"], comision_debito=None, comision_credito=None))))
 
 
 @app.post("/costos-fijos")
@@ -340,6 +342,10 @@ async def costos_fijos_post(request: Request):
     if f.get("accion") == "ppm":
         con.execute("INSERT OR REPLACE INTO parametro VALUES ('ppm_tasa', ?)",
                     (str(float(str(f["ppm"]).replace(",", ".")) / 100),))
+    elif f.get("accion") == "tarjetas":
+        for k in ("comision_debito", "comision_credito"):
+            v = str(f.get(k, "")).replace(",", ".").strip()
+            con.execute("INSERT OR REPLACE INTO parametro VALUES (?, ?)", (k, str(float(v)) if v else ""))
     elif f.get("accion") == "borrar":
         con.execute("DELETE FROM costo_fijo WHERE id=?", (int(f["id"]),))
     else:
@@ -379,7 +385,7 @@ def decisiones(request: Request):
     cerrados = [x for x in ps if x < hoy] or ps
     desde, hasta = cerrados[max(len(cerrados) - 3, 0)], cerrados[-1]
     dias, mapa = A.por_dia_semana(con), A.mapa_horas(con)
-    precios, tend = A.precios_a_revisar(con, cfg, desde, hasta), A.tendencia_productos(con)
+    precios, tend = A.precios_a_revisar(con, F.load_cfg(con), desde, hasta), A.tendencia_productos(con)
     return page(request, "decisiones.html", dias=dias, mapa=mapa, est=A.estimacion(con), precios=precios,
                 tend=tend, rec=A.recomendaciones(dias, mapa, precios, tend), desde=desde, hasta=hasta,
                 ini=A.ventanas(con)[0])

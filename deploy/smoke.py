@@ -15,6 +15,7 @@ con = web.db()
 ps = F.periodos(con)
 compras = [r[0] for r in con.execute("SELECT DISTINCT periodo FROM compra ORDER BY 1")]
 print("meses con ventas:", ps[0], "a", ps[-1], "| compras SII:", ", ".join(compras))
+print("version de la base:", con.execute("PRAGMA user_version").fetchone()[0])
 print("usuarios:", ", ".join(r[0] for r in con.execute("SELECT nombre FROM usuario")))
 mal = 0
 for u in ["/", "/decisiones", "/resultados", "/productos", "/insumos", "/compras", "/costos-fijos", "/impuestos", "/cargar", "/ayuda",

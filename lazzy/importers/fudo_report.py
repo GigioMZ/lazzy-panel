@@ -15,6 +15,8 @@ def import_fudo_report(con, path):
         if sheet not in wb.sheetnames:
             raise ValueError(f"Falta la hoja '{sheet}' en {path}")
         rows = [parse(r) for r in list(wb[sheet].iter_rows(values_only=True))[1:] if r and r[0] is not None]
+        if rows:   # el archivo manda en su rango de fechas: así desaparecen ventas anuladas después
+            con.execute(f"DELETE FROM {table} WHERE fecha BETWEEN ? AND ?", (min(r[0] for r in rows), max(r[0] for r in rows)))
         con.executemany(f"INSERT OR REPLACE INTO {table} VALUES (?,?,?,?)", rows)
         counts[table] = len(rows)
     con.commit()
@@ -33,6 +35,9 @@ def import_fudo_productos(con, path):
         k = (r[0].date().isoformat(), str(r[1]).strip(), str(r[3]).strip())
         q, m = agg.get(k, (0, 0))
         agg[k] = (q + (r[4] or 0), m + (r[5] or 0))
+    if agg:
+        fechas = [k[0] for k in agg]
+        con.execute("DELETE FROM venta_producto WHERE fecha BETWEEN ? AND ?", (min(fechas), max(fechas)))
     con.executemany("INSERT OR REPLACE INTO venta_producto VALUES (?,?,?,?,?)",
                     [(*k, q, round(m)) for k, (q, m) in agg.items()])
     con.commit()

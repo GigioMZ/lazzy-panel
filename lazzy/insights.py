@@ -77,7 +77,9 @@ def contexto(con, cfg, per, ps):
     antes = [x for x in ps if x < per]
     prev = F.pnl_mes(con, antes[-1], cfg) if antes else None
     comp = [x for x in (F.pnl_mes(con, m, cfg) for m in antes[-3:]) if x["tiene_compras"]]
-    return {"prev": prev, "n_prom": len(comp),
+    hace_un_anio = f"{int(per[:4]) - 1}{per[4:]}"
+    anio = F.pnl_mes(con, hace_un_anio, cfg) if hace_un_anio in ps else None
+    return {"prev": prev, "n_prom": len(comp), "anio": anio,
             "prom_ganancia": round(sum(x["resultado_operacional"] for x in comp) / len(comp)) if comp else None}
 
 

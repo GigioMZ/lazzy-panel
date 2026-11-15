@@ -35,5 +35,6 @@ fi
 systemctl daemon-reload
 systemctl enable --now lazzy-panel lazzy-update.timer
 systemctl reload caddy
+sh /opt/lazzy-panel/deploy/install_respaldo.sh
 echo "Listo. Ahora crea los usuarios:"
 echo "  sudo sh /opt/lazzy-panel/deploy/usuario.sh guillermo"

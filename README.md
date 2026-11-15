@@ -26,5 +26,6 @@ Servidor: `sudo sh deploy/install.sh panel.lazzycoffee.cl` (Ubuntu + Caddy + sys
 - [x] Fase 1b: ventas por producto + costos -> margen por producto
 - [x] Fase 2: panel web con login (resumen, resultados, productos y recetas, insumos, compras, costos fijos, impuestos, carga de archivos)
 - [x] Fase 2b: rediseño con la marca, lenguaje simple, ayudas «?», veredicto del mes, desglose por cada $1.000, pendientes y mapa de productos
+- [x] Fase 2c: compras por fecha del documento, comisión de tarjetas (facturada o estimada), historial de costos, migraciones, respaldos diarios
 - [ ] Fase 3: bot de Telegram (facturas, cierre diario, alertas)
 - [ ] Fase 4: sincronización API FUDO (requiere Plan Pro)

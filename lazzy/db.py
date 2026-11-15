@@ -45,10 +45,46 @@ CREATE TABLE IF NOT EXISTS usuario(nombre TEXT PRIMARY KEY, hash TEXT NOT NULL, 
 """
 
 
+def _m1(con):
+    """Historial de costos: cada cambio queda con su fecha, así los meses pasados usan el costo de su época."""
+    con.executescript("""
+    CREATE TABLE IF NOT EXISTS producto_costo_hist(
+      producto TEXT NOT NULL, desde TEXT NOT NULL, costo INTEGER, fuente TEXT, PRIMARY KEY(producto, desde));
+    CREATE TABLE IF NOT EXISTS insumo_hist(
+      insumo_id INTEGER NOT NULL, desde TEXT NOT NULL, cantidad_formato REAL NOT NULL, precio_formato INTEGER NOT NULL,
+      PRIMARY KEY(insumo_id, desde));
+    CREATE INDEX IF NOT EXISTS ix_compra_fecha ON compra(fecha_doc);
+    CREATE INDEX IF NOT EXISTS ix_compra_periodo ON compra(periodo);
+    """)
+    con.execute("INSERT OR IGNORE INTO producto_costo_hist SELECT producto, '2000-01-01', costo, fuente FROM producto_costo")
+    con.execute("INSERT OR IGNORE INTO insumo_hist SELECT id, '2000-01-01', cantidad_formato, precio_formato FROM insumo")
+
+
+# Cada cambio de estructura se agrega al final de esta lista; nunca se edita uno ya publicado.
+MIGRACIONES = [_m1]
+
+
+def migrar(con):
+    v = con.execute("PRAGMA user_version").fetchone()[0]
+    for i, m in enumerate(MIGRACIONES[v:], start=v + 1):
+        m(con)
+        con.execute(f"PRAGMA user_version = {i}")
+        con.commit()
+
+
 def connect(path="data/lazzy.db"):
     if path != ":memory:":
         Path(path).parent.mkdir(parents=True, exist_ok=True)
     con = sqlite3.connect(path, check_same_thread=False)
     con.row_factory = sqlite3.Row
+    con.execute("PRAGMA journal_mode=WAL") if path != ":memory:" else None
     con.executescript(SCHEMA)
+    migrar(con)
     return con
+
+
+def mes_rango(periodo):
+    """'2026-12' -> ('2026-12-01', '2027-01-01'): sirve para consultas por fecha que usan el índice."""
+    y, m = int(periodo[:4]), int(periodo[5:7])
+    y2, m2 = (y + 1, 1) if m == 12 else (y, m + 1)
+    return f"{y}-{m:02d}-01", f"{y2}-{m2:02d}-01"

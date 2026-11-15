@@ -11,8 +11,18 @@
 {% if g == 'costo_venta' %}<tr><td><span class="th-in">Queda después de insumos {{ tip('margen_bruto') }}</span></td>{% for p in cols %}<td>{{ celda(p, p.margen_bruto) }}</td>{% endfor %}<td>{{prom.margen_bruto|clp}}</td></tr>{% endif %}
 {% endif %}{% endfor %}
 <tr class="fuerte"><td><span class="th-in">Ganancia del mes {{ tip('ganancia') }}</span></td>{% for p in cols %}<td class="{{'malo' if p.completo and p.resultado_operacional<0}}">{{ celda(p, p.resultado_operacional) }}</td>{% endfor %}<td>{{prom.resultado_operacional|clp}}</td></tr>
-<tr class="hijo"><td>Ganancia por cada $1.000 vendidos</td>{% for p in cols %}<td>{% if p.completo %}${{ (p.pct.resultado*10)|round|int }}{% else %}—{% endif %}</td>{% endfor %}<td>{% if prom.ventas %}${{ (1000*prom.resultado_operacional/prom.ventas)|round|int }}{% endif %}</td></tr>
-<tr class="hijo"><td><span class="th-in">Insumos + sueldos por cada $1.000 {{ tip('insumos_sueldos') }}</span></td>{% for p in cols %}<td>{% if p.completo %}${{ (p.pct.prime_cost*10)|round|int }}{% else %}—{% endif %}</td>{% endfor %}<td></td></tr>
+<tr class="hijo"><td>Ganancia por cada $1.000 vendidos</td>{% for p in cols %}<td>{% if p.completo %}{{ (p.pct.resultado*10)|round|int|clp }}{% else %}—{% endif %}</td>{% endfor %}<td>{% if prom.ventas %}{{ (1000*prom.resultado_operacional/prom.ventas)|round|int|clp }}{% endif %}</td></tr>
+<tr class="hijo"><td><span class="th-in">Insumos + sueldos por cada $1.000 {{ tip('insumos_sueldos') }}</span></td>{% for p in cols %}<td>{% if p.completo %}{{ (p.pct.prime_cost*10)|round|int|clp }}{% else %}—{% endif %}</td>{% endfor %}<td></td></tr>
 {% if cols|selectattr('inversion')|list %}<tr><td><span class="th-in">Compra de equipos (no se resta) {{ tip('equipos') }}</span></td>{% for p in cols %}<td>{{p.inversion|clp}}</td>{% endfor %}<td></td></tr>{% endif %}
 </table></div>
+<section class="bloque"><h2>Comisión de tarjetas {{ tip('comision_tarjetas') }}</h2>
+<p class="sub">Lo que se llevó Transbank cada mes, comparado con lo que cobraste con tarjeta. {% if tasa %}{% if tasa.fuente == 'configurada' %}Tasas configuradas: débito {{tasa.debito|pct(2)}}, crédito {{tasa.credito|pct(2)}}.{% else %}Tasa promedio de tus facturas: {{tasa.debito|pct(2)}} sin IVA.{% endif %}{% endif %} <a href="/costos-fijos">Cambiar tasas</a></p>
+<div class="tabla"><table><tr><th></th>{% for p in cols %}<th>{{p.periodo|mes}}</th>{% endfor %}</tr>
+<tr><td>Cobrado con débito</td>{% for p in cols %}<td>{{p.comision.ventas.debito|clp}}</td>{% endfor %}</tr>
+<tr><td>Cobrado con crédito</td>{% for p in cols %}<td>{{p.comision.ventas.credito|clp}}</td>{% endfor %}</tr>
+<tr class="fuerte"><td>Comisión, sin IVA</td>{% for p in cols %}<td>{{p.comision.monto|clp}}{% if p.comision.estimada %} *{% endif %}</td>{% endfor %}</tr>
+<tr class="hijo"><td>Facturas y notas de crédito de Transbank</td>{% for p in cols %}<td>{{p.comision.documentos or '—'}}</td>{% endfor %}</tr>
+<tr class="hijo"><td>% de lo cobrado con tarjeta</td>{% for p in cols %}<td>{{p.comision.pct|pct(2)}}</td>{% endfor %}</tr></table></div>
+<p class="nota">* Estimada: todavía no llega la factura de Transbank de ese mes. {{ tip('comision_estimada') }}</p></section>
+
 <p class="nota">La raya (—) significa que falta subir el archivo de compras del SII de ese mes o que el mes aún no termina. El promedio usa solo los {{prom.n}} meses completos. <a href="/cargar">Subir archivos</a></p>{% endblock %}

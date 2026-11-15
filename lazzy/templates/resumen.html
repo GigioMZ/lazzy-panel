@@ -11,7 +11,7 @@
 {% elif not parcial %}<p><a class="btn" href="/cargar">Subir compras del SII</a></p>{% endif %}
 
 {% if des %}<section class="bloque"><h2>¿En qué se fue cada $1.000 que vendiste?</h2>
-<p class="sub">Vendiste {{p.ventas.neto|clp}} sin IVA. Así se repartió esa plata.</p>
+<p class="sub">Vendiste {{p.ventas.neto|clp}} sin IVA. Así se repartió esa plata.{% if p.comision.estimada %} La comisión de tarjetas de este mes ({{p.comision.monto|clp}}) es estimada porque todavía no llega la factura de Transbank. {{ tip('comision_estimada') }}{% endif %}</p>
 <div class="mil">{% for f in des %}{% if loop.last %}<div class="total"></div>{% endif %}
 <div class="mf"><div class="n">{{f.nombre}} {{ tip(f.clave) }}</div>
 <div class="pista"><div class="barra {{f.tipo if f.tipo != 'costo'}}" style="width:{{f.ancho}}%"></div></div>
@@ -21,7 +21,7 @@
 <section class="bloque"><h2>Los números del mes</h2>
 <div class="kpis">
 <div class="kpi"><div class="t">Vendiste (sin IVA) {{ tip('venta_neta') }}</div><div class="n">{{p.ventas.neto|clp}}</div>
-<div class="d">{% if kpi.var_venta is not none and not parcial %}{{ '▲' if kpi.var_venta >= 0 else '▼' }} {{ kpi.var_venta|abs|pct }} {{ 'más' if kpi.var_venta >= 0 else 'menos' }} que {{ ctx.prev.periodo|mesl }}<br>{% endif %}{{p.ventas.tickets|num}} ventas, {{p.ventas.ticket_promedio|clp}} promedio por venta {{ tip('ticket') }}</div></div>
+<div class="d">{% if kpi.var_venta is not none and not parcial %}{{ '▲' if kpi.var_venta >= 0 else '▼' }} {{ kpi.var_venta|abs|pct }} {{ 'más' if kpi.var_venta >= 0 else 'menos' }} que {{ ctx.prev.periodo|mesl }}<br>{% endif %}{% if kpi.var_anio is not none and not parcial %}{{ '▲' if kpi.var_anio >= 0 else '▼' }} {{ kpi.var_anio|abs|pct }} {{ 'más' if kpi.var_anio >= 0 else 'menos' }} que {{ ctx.anio.periodo|mesl }}<br>{% endif %}{{p.ventas.tickets|num}} ventas, {{p.ventas.ticket_promedio|clp}} promedio por venta {{ tip('ticket') }}</div></div>
 {% if v.con_resultado %}
 <div class="kpi"><div class="t">Insumos {{ tip('insumos') }}</div><div class="n">${{kpi.insumos}}</div>
 <div class="d">de cada $1.000 vendidos<br><span class="st {{kpi.e_insumos}}">{{ {'ok':'Bien','warn':'Atención','bad':'Alto'}[kpi.e_insumos] }}</span> lo sano es hasta $350</div></div>

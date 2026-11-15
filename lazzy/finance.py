@@ -11,6 +11,9 @@ try:
 except ModuleNotFoundError:  # Python < 3.11
     import tomli as tomllib
 from collections import defaultdict
+from datetime import date
+
+from .db import mes_rango
 
 
 CATEGORIAS = {  # categoría -> grupo del estado de resultados
@@ -44,9 +47,11 @@ def seed_from_config(con, cfg):
     for prod, c in cfg.get("costo_producto", {}).items():
         con.execute("INSERT OR IGNORE INTO producto_costo(producto,costo,fuente) VALUES (?,?,?)",
                     (prod, c["costo"], c["fuente"]))
+        con.execute("INSERT OR IGNORE INTO producto_costo_hist VALUES (?,?,?,?)", (prod, "2000-01-01", c["costo"], c["fuente"]))
     for i in cfg.get("insumo", []):
         con.execute("INSERT OR IGNORE INTO insumo(nombre,unidad,cantidad_formato,precio_formato) VALUES (?,?,?,?)",
                     (i["nombre"], i["unidad"], i["cantidad"], i["precio"]))
+    con.execute("INSERT OR IGNORE INTO insumo_hist SELECT id, '2000-01-01', cantidad_formato, precio_formato FROM insumo")
     ids = {r["nombre"]: r["id"] for r in con.execute("SELECT id, nombre FROM insumo")}
     for prod, lineas in cfg.get("receta", {}).items():
         if con.execute("SELECT 1 FROM receta WHERE producto=? LIMIT 1", (prod,)).fetchone():
@@ -56,21 +61,71 @@ def seed_from_config(con, cfg):
     con.commit()
 
 
-def costo_receta(con, producto):
-    r = con.execute("SELECT SUM(r.cantidad * i.precio_formato / i.cantidad_formato) c, COUNT(*) n "
-                    "FROM receta r JOIN insumo i ON i.id = r.insumo_id WHERE r.producto=?", (producto,)).fetchone()
-    return round(r["c"]) if r["n"] else None
+def _precios_insumo(con, fecha=None):
+    """Precio por unidad de cada insumo vigente en una fecha (por defecto, el actual)."""
+    if not fecha:
+        return {r["id"]: r["precio_formato"] / r["cantidad_formato"] for r in con.execute("SELECT * FROM insumo")}
+    out = {}
+    for r in con.execute("SELECT * FROM insumo_hist WHERE desde <= ? ORDER BY desde", (fecha,)):
+        out[r["insumo_id"]] = r["precio_formato"] / r["cantidad_formato"]
+    for r in con.execute("SELECT * FROM insumo"):          # insumos creados después de esa fecha
+        out.setdefault(r["id"], r["precio_formato"] / r["cantidad_formato"])
+    return out
 
 
-def load_cfg(con):
-    """Configuración vigente leída de la base (lo que se edita en el panel)."""
+def costo_receta(con, producto, fecha=None, precios=None):
+    precios = precios if precios is not None else _precios_insumo(con, fecha)
+    filas = con.execute("SELECT insumo_id, cantidad FROM receta WHERE producto=?", (producto,)).fetchall()
+    return round(sum(r["cantidad"] * precios.get(r["insumo_id"], 0) for r in filas)) if filas else None
+
+
+def registrar_costo(con, producto, costo, fuente, hoy=None):
+    """Cambia el costo fijo de un producto guardando el historial (costo None = quitar)."""
+    hoy = (hoy or date.today()).isoformat()
+    if costo is None:
+        con.execute("DELETE FROM producto_costo WHERE producto=?", (producto,))
+    else:
+        con.execute("INSERT OR REPLACE INTO producto_costo VALUES (?,?,?,?)", (producto, costo, fuente, hoy))
+    con.execute("INSERT OR REPLACE INTO producto_costo_hist VALUES (?,?,?,?)", (producto, hoy, costo, fuente))
+
+
+def registrar_insumo(con, insumo_id, hoy=None):
+    r = con.execute("SELECT * FROM insumo WHERE id=?", (insumo_id,)).fetchone()
+    con.execute("INSERT OR REPLACE INTO insumo_hist VALUES (?,?,?,?)",
+                (insumo_id, (hoy or date.today()).isoformat(), r["cantidad_formato"], r["precio_formato"]))
+
+
+def _costos_fijos_producto(con, fecha=None):
+    if not fecha:
+        return {r["producto"]: {"costo": r["costo"], "fuente": r["fuente"]} for r in con.execute("SELECT * FROM producto_costo")}
+    out = {}
+    for r in con.execute("SELECT * FROM producto_costo_hist WHERE desde <= ? ORDER BY desde", (fecha,)):
+        if r["costo"] is None:
+            out.pop(r["producto"], None)
+        else:
+            out[r["producto"]] = {"costo": r["costo"], "fuente": r["fuente"]}
+    for r in con.execute("SELECT * FROM producto_costo"):   # costo cargado por primera vez después de esa fecha
+        if r["producto"] not in out and not con.execute(
+                "SELECT 1 FROM producto_costo_hist WHERE producto=? AND desde <= ?", (r["producto"], fecha)).fetchone():
+            out[r["producto"]] = {"costo": r["costo"], "fuente": r["fuente"]}
+    return out
+
+
+def fin_de_mes(periodo):
+    return date.fromordinal(date.fromisoformat(mes_rango(periodo)[1]).toordinal() - 1).isoformat()
+
+
+def load_cfg(con, fecha=None):
+    """Configuración leída de la base. Con fecha (AAAA-MM-DD), los costos son los vigentes ese día."""
     par = {r["clave"]: r["valor"] for r in con.execute("SELECT * FROM parametro")}
-    costos = {r["producto"]: {"costo": r["costo"], "fuente": r["fuente"]}
-              for r in con.execute("SELECT * FROM producto_costo")}
+    costos = _costos_fijos_producto(con, fecha)
+    precios = _precios_insumo(con, fecha)
     for r in con.execute("SELECT DISTINCT producto FROM receta"):
-        costos[r["producto"]] = {"costo": costo_receta(con, r["producto"]), "fuente": "receta"}
+        costos[r["producto"]] = {"costo": costo_receta(con, r["producto"], precios=precios), "fuente": "receta"}
+    tasa = lambda k: float(par[k]) if par.get(k) not in (None, "") else None
     return {
-        "empresa": {"iva": float(par.get("iva", 0.19)), "ppm_tasa": float(par.get("ppm_tasa", 0))},
+        "empresa": {"iva": float(par.get("iva", 0.19)), "ppm_tasa": float(par.get("ppm_tasa", 0)),
+                    "comision_debito": tasa("comision_debito"), "comision_credito": tasa("comision_credito")},
         "costo_fijo": [dict(r) | {"hasta": r["hasta"] or "9999-12"} for r in con.execute("SELECT * FROM costo_fijo")],
         "proveedores": {r["rut"]: r["categoria"] for r in con.execute("SELECT rut, categoria FROM proveedor")},
         "categorias": CATEGORIAS, "costo_producto": costos,
@@ -84,7 +139,7 @@ def _sign(tipo_doc):
 def ventas_mes(con, periodo, iva):
     bruto, tickets, dias = con.execute(
         "SELECT COALESCE(SUM(bruto),0), COALESCE(SUM(tickets),0), COUNT(DISTINCT fecha) "
-        "FROM venta_hora WHERE substr(fecha,1,7)=?", (periodo,)).fetchone()
+        "FROM venta_hora WHERE fecha >= ? AND fecha < ?", mes_rango(periodo)).fetchone()
     neto = round(bruto / (1 + iva))
     return {"bruto": bruto, "neto": neto, "iva_debito": bruto - neto, "tickets": tickets,
             "dias_abiertos": dias, "ticket_promedio": round(bruto / tickets) if tickets else 0}
@@ -93,14 +148,16 @@ def ventas_mes(con, periodo, iva):
 def compras_por_categoria(con, periodo, cfg):
     prov, out = cfg["proveedores"], defaultdict(int)
     detalle_sin = []
-    for r in con.execute("SELECT * FROM compra WHERE periodo=?", (periodo,)):
+    # Resultados: cada factura cuenta en el mes de su fecha (cuando se compró o se prestó el servicio).
+    # El IVA, en cambio, va en el periodo en que se registró en el SII (ver iva_mes).
+    for r in con.execute("SELECT * FROM compra WHERE fecha_doc >= ? AND fecha_doc < ?", mes_rango(periodo)):
         cat = r["categoria"] or prov.get(r["rut"]) or "sin_clasificar"
         monto = _sign(r["tipo_doc"]) * (r["neto"] + r["exento"] + r["iva_no_rec"] - r["activo_fijo_neto"])
         out[cat] += monto
         if cat == "sin_clasificar":
             detalle_sin.append((r["razon_social"], r["rut"], monto))
-    for r in con.execute("SELECT categoria, SUM(neto) n FROM gasto_manual WHERE substr(fecha,1,7)=? "
-                         "GROUP BY categoria", (periodo,)):
+    for r in con.execute("SELECT categoria, SUM(neto) n FROM gasto_manual WHERE fecha >= ? AND fecha < ? "
+                         "GROUP BY categoria", mes_rango(periodo)):
         out[r["categoria"]] += r["n"]
     return dict(out), detalle_sin
 
@@ -117,8 +174,8 @@ def iva_mes(con, periodo, cfg):
     v = ventas_mes(con, periodo, cfg["empresa"]["iva"])
     credito = sum(_sign(r["tipo_doc"]) * r["iva_rec"]
                   for r in con.execute("SELECT tipo_doc, iva_rec FROM compra WHERE periodo=?", (periodo,)))
-    credito += con.execute("SELECT COALESCE(SUM(iva_rec),0) FROM gasto_manual WHERE substr(fecha,1,7)=?",
-                           (periodo,)).fetchone()[0]
+    credito += con.execute("SELECT COALESCE(SUM(iva_rec),0) FROM gasto_manual WHERE fecha >= ? AND fecha < ?",
+                           mes_rango(periodo)).fetchone()[0]
     ppm = round(v["neto"] * cfg["empresa"].get("ppm_tasa", 0))
     return {"debito": v["iva_debito"], "credito": credito, "iva_a_pagar": v["iva_debito"] - credito,
             "ppm": ppm, "f29_estimado": max(v["iva_debito"] - credito, 0) + ppm}
@@ -129,6 +186,9 @@ def pnl_mes(con, periodo, cfg):
     cats, sin = compras_por_categoria(con, periodo, cfg)
     for k, m in costos_fijos(cfg, periodo).items():
         cats[k] = cats.get(k, 0) + m
+    com = comision_mes(con, periodo, cfg)
+    if com["estimada"]:
+        cats["comision_tarjetas"] = cats.get("comision_tarjetas", 0) + com["monto"]
     grupos = cfg["categorias"]
     lineas = defaultdict(dict)
     for cat, monto in cats.items():
@@ -152,20 +212,81 @@ def pnl_mes(con, periodo, cfg):
         "equilibrio": {"venta_neta_mes": round(fijos / mc) if mc > 0 else None,
                        "venta_bruta_dia": round(fijos / mc * (1 + cfg["empresa"]["iva"]) / v["dias_abiertos"])
                        if mc > 0 and v["dias_abiertos"] else None},
-        "iva": iva_mes(con, periodo, cfg),
+        "iva": iva_mes(con, periodo, cfg), "comision": com,
     }
+
+
+TARJETAS = {"debito": "Tarj. Débito", "credito": "Tarj. Crédito"}
+
+
+def ventas_tarjeta(con, periodo):
+    out = {"debito": 0, "credito": 0}
+    for r in con.execute("SELECT medio, SUM(bruto) b FROM venta_medio_pago WHERE fecha >= ? AND fecha < ? GROUP BY medio",
+                         mes_rango(periodo)):
+        m = r["medio"].lower()
+        if "tarj" in m or "débito" in m or "crédito" in m or "debito" in m or "credito" in m:
+            out["credito" if "cr" in m else "debito"] += r["b"]
+    return out
+
+
+def _facturado_tarjetas(con, periodo, cfg):
+    ruts = [rut for rut, c in cfg["proveedores"].items() if c == "comision_tarjetas"]
+    if not ruts:
+        return 0, 0
+    q = ",".join("?" * len(ruts))
+    r = con.execute(f"SELECT COALESCE(SUM(CASE WHEN tipo_doc=61 THEN -neto ELSE neto END),0) m, COUNT(*) n FROM compra "
+                    f"WHERE rut IN ({q}) AND fecha_doc >= ? AND fecha_doc < ?", (*ruts, *mes_rango(periodo))).fetchone()
+    return r["m"], r["n"]
+
+
+def tasa_tarjetas(con, cfg, antes_de=None, meses=3):
+    """Comisión sin IVA como % de lo cobrado con tarjeta. Configurada por tipo de tarjeta, o calculada con las
+    facturas de Transbank de los últimos meses completos."""
+    e = cfg["empresa"]
+    if e.get("comision_debito") is not None and e.get("comision_credito") is not None:
+        return {"debito": e["comision_debito"], "credito": e["comision_credito"], "fuente": "configurada"}
+    ps = [x[0] for x in con.execute("SELECT DISTINCT substr(fecha,1,7) FROM venta_hora ORDER BY 1")]
+    usados, fact, vent = [], 0, 0
+    for p in reversed(ps):
+        if antes_de and p >= antes_de:
+            continue
+        m, n = _facturado_tarjetas(con, p, cfg)
+        if n:
+            t = ventas_tarjeta(con, p)
+            fact, vent = fact + m, vent + t["debito"] + t["credito"]
+            usados.append(p)
+        if len(usados) == meses:
+            break
+    if not vent:
+        return None
+    t = 100 * fact / vent
+    return {"debito": t, "credito": t, "fuente": "calculada", "meses": sorted(usados)}
+
+
+def comision_mes(con, periodo, cfg):
+    """Comisión de tarjetas del mes: la facturada si ya llegó la factura, si no, estimada con la tasa."""
+    ventas = ventas_tarjeta(con, periodo)
+    fact, n = _facturado_tarjetas(con, periodo, cfg)
+    tasa = tasa_tarjetas(con, cfg, antes_de=None if n else periodo)
+    est = None
+    if tasa:
+        est = round(ventas["debito"] * tasa["debito"] / 100 + ventas["credito"] * tasa["credito"] / 100)
+    total = ventas["debito"] + ventas["credito"]
+    return {"ventas": ventas, "facturado": fact, "documentos": n, "estimada": not n and bool(est),
+            "monto": fact if n else (est or 0), "esperada": est, "tasa": tasa,
+            "pct": round(100 * (fact if n else (est or 0)) / total, 2) if total else None}
 
 
 def ventas_por_hora(con, periodo):
     return [dict(r) for r in con.execute(
         "SELECT hora, SUM(bruto) bruto, SUM(tickets) tickets FROM venta_hora "
-        "WHERE substr(fecha,1,7)=? GROUP BY hora ORDER BY hora", (periodo,))]
+        "WHERE fecha >= ? AND fecha < ? GROUP BY hora ORDER BY hora", mes_rango(periodo))]
 
 
 def medios_pago(con, periodo):
     return [dict(r) for r in con.execute(
-        "SELECT medio, SUM(bruto) bruto FROM venta_medio_pago WHERE substr(fecha,1,7)=? "
-        "GROUP BY medio ORDER BY bruto DESC", (periodo,))]
+        "SELECT medio, SUM(bruto) bruto FROM venta_medio_pago WHERE fecha >= ? AND fecha < ? "
+        "GROUP BY medio ORDER BY bruto DESC", mes_rango(periodo))]
 
 
 def margen_productos(con, desde, hasta, cfg):
@@ -178,7 +299,8 @@ def margen_productos(con, desde, hasta, cfg):
     rows = []
     for r in con.execute(
             "SELECT categoria, producto, SUM(cantidad) q, SUM(bruto) b FROM venta_producto "
-            "WHERE substr(fecha,1,7) BETWEEN ? AND ? GROUP BY categoria, producto HAVING b > 0", (desde, hasta)):
+            "WHERE fecha >= ? AND fecha < ? GROUP BY categoria, producto HAVING b > 0",
+            (mes_rango(desde)[0], mes_rango(hasta)[1])):
         neto = round(r["b"] / (1 + iva))
         c = costos.get(r["producto"])
         d = {"categoria": r["categoria"], "producto": r["producto"], "cantidad": r["q"], "neto": neto,

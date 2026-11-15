@@ -21,7 +21,7 @@ def setup(tmp_path):
     con.execute("INSERT INTO venta_hora VALUES ('2026-10-02',9,1190,2)")
     f = tmp_path / "RCV_COMPRA_REGISTRO_1-9_202610_2.csv"
     f.write_text(HDR +
-                 "1;33;Del Giro;1-9;CAFE SA;10;28/09/2026;x;;0;400;76;;;476;;\n"
+                 "1;33;Del Giro;1-9;CAFE SA;10;01/10/2026;x;;0;400;76;;;476;;\n"
                  "2;61;Del Giro;1-9;CAFE SA;11;05/10/2026;x;;0;100;19;;;119;;\n"
                  "3;33;Del Giro;2-7;TBK;12;05/10/2026;x;;0;50;10;;;60;;\n"
                  "4;33;Del Giro;3-5;NUEVO;13;05/10/2026;x;;0;200;38;;;238;;\n", encoding="utf-8")
@@ -98,3 +98,79 @@ def test_seed_y_receta():
     assert c["costo_producto"]["Torta"]["costo"] == 1500 and c["empresa"]["ppm_tasa"] == 0.0025
     con.execute("UPDATE insumo SET precio_formato=2000 WHERE nombre='Leche'")
     assert load_cfg(con)["costo_producto"]["Latte"]["costo"] == 960
+
+
+def test_factura_cuenta_en_su_mes_y_el_iva_en_su_periodo(tmp_path):
+    con, f = setup(tmp_path)
+    f.write_text(HDR + "1;33;Del Giro;1-9;CAFE SA;10;28/09/2026;x;;0;400;76;;;476;;\n", encoding="utf-8")
+    import_rcv_compras(con, f)                        # archivo del periodo 2026-10
+    con.execute("INSERT INTO venta_hora VALUES ('2026-09-30',9,1190,1)")
+    assert pnl_mes(con, "2026-09", CFG)["costo_venta"] == 400      # resultados: mes de la factura
+    assert pnl_mes(con, "2026-10", CFG)["costo_venta"] == 0
+    assert iva_mes(con, "2026-10", CFG)["credito"] == 76          # IVA: periodo del SII
+    assert iva_mes(con, "2026-09", CFG)["credito"] == 0
+
+
+def test_cambio_de_anio():
+    from lazzy.db import mes_rango
+    from lazzy.finance import fin_de_mes
+    assert mes_rango("2026-12") == ("2026-12-01", "2027-01-01") and fin_de_mes("2027-02") == "2027-02-28"
+    con = connect(":memory:")
+    con.execute("INSERT INTO venta_hora VALUES ('2026-12-31',9,1190,1)")
+    con.execute("INSERT INTO venta_hora VALUES ('2027-01-01',9,2380,1)")
+    cfg = dict(CFG, costo_fijo=[{"nombre": "s", "categoria": "remuneraciones", "monto": 300, "desde": "2026-11", "hasta": "2026-12"},
+                                {"nombre": "s2", "categoria": "remuneraciones", "monto": 500, "desde": "2027-01"}])
+    assert pnl_mes(con, "2026-12", cfg)["ventas"]["neto"] == 1000 and pnl_mes(con, "2026-12", cfg)["personal"] == 300
+    assert pnl_mes(con, "2027-01", cfg)["ventas"]["neto"] == 2000 and pnl_mes(con, "2027-01", cfg)["personal"] == 500
+
+
+def test_comision_tarjetas_facturada_y_estimada():
+    from lazzy.finance import comision_mes
+    con = connect(":memory:")
+    cfg = dict(CFG, proveedores={"9-9": "comision_tarjetas"})
+    for m, deb, cre in (("2026-09", 900000, 100000), ("2026-10", 1800000, 200000)):
+        con.execute("INSERT INTO venta_hora VALUES (?,9,?,1)", (m + "-15", deb + cre))
+        con.execute("INSERT INTO venta_medio_pago VALUES (?, 'Tarj. Débito', ?, 1)", (m + "-15", deb))
+        con.execute("INSERT INTO venta_medio_pago VALUES (?, 'Tarj. Crédito', ?, 1)", (m + "-15", cre))
+    con.execute("INSERT INTO compra VALUES ('2026-10',33,'9-9','TBK',1,'2026-09-28',0,20000,3800,0,23800,0,NULL)")
+    con.execute("INSERT INTO compra VALUES ('2026-10',61,'9-9','TBK',2,'2026-09-30',0,1000,190,0,1190,0,NULL)")
+    sep = comision_mes(con, "2026-09", cfg)
+    assert sep["facturado"] == 19000 and not sep["estimada"] and sep["pct"] == 1.9
+    octu = comision_mes(con, "2026-10", cfg)        # aún sin factura: se estima con la tasa de septiembre
+    assert octu["estimada"] and octu["monto"] == 38000 and octu["tasa"]["fuente"] == "calculada"
+    assert pnl_mes(con, "2026-10", cfg)["lineas"]["gasto_operacional"]["comision_tarjetas"] == 38000
+    cfg["empresa"] = dict(cfg["empresa"], comision_debito=1.0, comision_credito=2.5)
+    assert comision_mes(con, "2026-10", cfg)["monto"] == 18000 + 5000
+
+
+def test_historial_de_costos():
+    from datetime import date
+    from lazzy.finance import registrar_costo, registrar_insumo
+    con = connect(":memory:")
+    seed_from_config(con, {"empresa": {"iva": 0.19}, "costo_producto": {"Torta": {"costo": 1000, "fuente": "factura"}},
+                           "insumo": [{"nombre": "Leche", "unidad": "ml", "cantidad": 1000, "precio": 1000}],
+                           "receta": {"Latte": {"Leche": 300}}})
+    registrar_costo(con, "Torta", 1500, "manual", hoy=date(2027, 1, 10))
+    con.execute("UPDATE insumo SET precio_formato=2000")
+    registrar_insumo(con, 1, hoy=date(2027, 1, 10))
+    viejo, nuevo = load_cfg(con, "2026-12-31")["costo_producto"], load_cfg(con, "2027-01-31")["costo_producto"]
+    assert viejo["Torta"]["costo"] == 1000 and nuevo["Torta"]["costo"] == 1500
+    assert viejo["Latte"]["costo"] == 300 and nuevo["Latte"]["costo"] == 600
+    assert load_cfg(con)["costo_producto"]["Torta"]["costo"] == 1500
+
+
+def test_reimportar_borra_ventas_anuladas(tmp_path):
+    import openpyxl
+    from datetime import datetime
+    from lazzy.importers.fudo_report import import_fudo_report
+    con = connect(":memory:")
+    def xlsx(filas):
+        wb = openpyxl.Workbook(); wb.remove(wb.active)
+        for nombre in ("Evolución de ventas", "Medios de pago", "Origen de ventas"):
+            ws = wb.create_sheet(nombre); ws.append(["h"] * 5)
+        for d, h, v in filas:
+            wb["Evolución de ventas"].append([datetime.fromisoformat(d), None, h, v, 1])
+        p = tmp_path / "v.xlsx"; wb.save(p); return p
+    import_fudo_report(con, xlsx([("2026-10-01", 9, 1000), ("2026-10-01", 10, 500), ("2026-10-02", 9, 700)]))
+    import_fudo_report(con, xlsx([("2026-10-01", 9, 1000), ("2026-10-02", 9, 700)]))   # la venta de las 10 se anuló
+    assert con.execute("SELECT COUNT(*), SUM(bruto) FROM venta_hora").fetchone()[:] == (2, 1700)
