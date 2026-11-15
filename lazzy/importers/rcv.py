@@ -10,7 +10,7 @@ def _i(v):
 
 
 def periodo_from_filename(name):
-    m = re.search(r"_(\d{4})(\d{2})(?:[_.(]|$)", name)
+    m = re.search(r"_(\d{4})(\d{2})(?:[_.( ]|$)", name)
     if not m:
         raise ValueError(f"No pude leer el periodo AAAAMM del nombre: {name}")
     return f"{m.group(1)}-{m.group(2)}"

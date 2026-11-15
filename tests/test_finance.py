@@ -31,6 +31,7 @@ def setup(tmp_path):
 def test_periodo_from_filename():
     assert periodo_from_filename("RCV_COMPRA_REGISTRO_77618245-1_202610_2.csv") == "2026-10"
     assert periodo_from_filename("RCV_COMPRA_REGISTRO_77618245-1_202610.csv") == "2026-10"
+    assert periodo_from_filename("RCV_COMPRA_REGISTRO_77618245-1_202610 (2).csv") == "2026-10"
 
 
 def test_pnl_and_iva(tmp_path):
