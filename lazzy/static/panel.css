@@ -169,6 +169,8 @@ dl.glos dd{margin:2px 0 0;color:var(--tinta-2)}
   h1{font-size:28px}
   .mil{display:block}
   .mil .mf{display:grid;grid-template-columns:1fr auto;gap:3px 10px;margin-bottom:14px}
+  .mil .n{grid-column:1;grid-row:1}
+  .mil .v{grid-column:2;grid-row:1}
   .mil .pista,.mil .m{grid-column:1/-1}
   .mil .m{white-space:normal}
   .mil .total{margin:0 0 14px}

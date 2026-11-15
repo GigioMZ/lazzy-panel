@@ -1,8 +1,8 @@
 <!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex"><title>{% block title %}Panel{% endblock %} | Lazzy Coffee</title>
-<link rel="icon" href="/static/logo.jpg"><link rel="stylesheet" href="/static/panel.css?v=3"></head><body>
+<link rel="icon" href="/static/logo.jpg"><link rel="stylesheet" href="/static/panel.css?v=4"></head><body>
 {% if user %}<div class="app"><aside class="lado"><a class="logo" href="/" aria-label="Lazzy Coffee, inicio"><img src="/static/logo.jpg" alt="Lazzy Coffee"></a>
 {% for titulo, items in nav %}{% if titulo %}<h3>{{titulo}}</h3>{% endif %}{% for u, t in items %}<a class="item {{'on' if request.url.path==u}}" href="{{u}}" {% if request.url.path==u %}aria-current="page"{% endif %}>{{t}}</a>{% endfor %}{% endfor %}
 <div class="pie">{% if fresc.ventas %}Ventas cargadas hasta el {{fresc.ventas}}.{% endif %} {% if fresc.compras %}Compras del SII hasta {{fresc.compras}}.{% endif %}<br><a href="/logout">Cerrar sesión de {{user}}</a></div></aside>
 <main>{% block main %}{% endblock %}</main></div>{% else %}{% block fuera %}{% endblock %}{% endif %}
-<script src="/static/panel.js?v=3"></script>{% block js %}{% endblock %}</body></html>
+<script src="/static/panel.js?v=4"></script>{% block js %}{% endblock %}</body></html>
