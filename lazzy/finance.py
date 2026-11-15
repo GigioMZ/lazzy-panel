@@ -6,7 +6,10 @@ Convenciones:
 - Notas de crédito (tipo 61) restan.
 - El costo de venta es por COMPRAS del mes (no por consumo) hasta que exista conteo de inventario.
 """
-import tomllib
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python < 3.11
+    import tomli as tomllib
 from collections import defaultdict
 
 
