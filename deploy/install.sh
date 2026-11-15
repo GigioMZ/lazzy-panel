@@ -36,4 +36,4 @@ systemctl daemon-reload
 systemctl enable --now lazzy-panel lazzy-update.timer
 systemctl reload caddy
 echo "Listo. Ahora crea los usuarios:"
-echo "  sudo -u lazzy LAZZY_DB=/var/lib/lazzy/lazzy.db /opt/lazzy-panel/.venv/bin/python -m lazzy.cli --db /var/lib/lazzy/lazzy.db user guillermo"
+echo "  sudo sh /opt/lazzy-panel/deploy/usuario.sh guillermo"
