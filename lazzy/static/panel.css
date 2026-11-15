@@ -180,3 +180,6 @@ dl.glos dd{margin:2px 0 0;color:var(--tinta-2)}
   .pend li{flex-direction:column}
 }
 @media (prefers-reduced-motion:no-preference){.mil .barra{transition:width .5s ease-out}}
+table.calor td{text-align:center;font-weight:600;font-size:13px;padding:7px 4px;border:2px solid var(--papel);min-width:38px}
+table.calor td:first-child{text-align:left;font-weight:500;background:none}
+table.calor th{text-align:center;border-bottom:0;font-size:12.5px}

@@ -21,6 +21,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from markupsafe import Markup, escape
 
 from . import finance as F
+from . import analisis as A
 from . import insights as I
 from .auth import check_password
 from .db import connect
@@ -65,7 +66,8 @@ def tip(clave):
 
 
 T.env.globals.update(tip=tip, G=GLOSARIO, CATS_UI=CATEGORIAS_UI, GRUPOS=GRUPO_NOMBRE)
-NAV = [("Ver", [("/", "Inicio"), ("/resultados", "Mes a mes"), ("/productos", "Productos"), ("/impuestos", "IVA")]),
+NAV = [("Ver", [("/", "Inicio"), ("/decisiones", "Decisiones"), ("/resultados", "Mes a mes"), ("/productos", "Productos"),
+                 ("/impuestos", "IVA")]),
        ("Actualizar", [("/cargar", "Subir archivos"), ("/compras", "Facturas y proveedores"),
                        ("/insumos", "Insumos y precios"), ("/costos-fijos", "Gastos fijos")]),
        ("", [("/ayuda", "Ayuda")])]
@@ -363,6 +365,24 @@ def impuestos(request: Request):
              "tiene_compras": bool(con.execute("SELECT 1 FROM compra WHERE periodo=? LIMIT 1", (x,)).fetchone())}
             for x in reversed(lista)]
     return page(request, "impuestos.html", rows=rows, ppm=cfg["empresa"]["ppm_tasa"] * 100)
+
+
+@app.get("/decisiones", response_class=HTMLResponse)
+def decisiones(request: Request):
+    user(request)
+    con = db()
+    cfg = F.load_cfg(con)
+    ps = F.periodos(con)
+    if not ps:
+        return RedirectResponse("/cargar", 303)
+    hoy = date.today().strftime("%Y-%m")
+    cerrados = [x for x in ps if x < hoy] or ps
+    desde, hasta = cerrados[max(len(cerrados) - 3, 0)], cerrados[-1]
+    dias, mapa = A.por_dia_semana(con), A.mapa_horas(con)
+    precios, tend = A.precios_a_revisar(con, cfg, desde, hasta), A.tendencia_productos(con)
+    return page(request, "decisiones.html", dias=dias, mapa=mapa, est=A.estimacion(con), precios=precios,
+                tend=tend, rec=A.recomendaciones(dias, mapa, precios, tend), desde=desde, hasta=hasta,
+                ini=A.ventanas(con)[0])
 
 
 @app.get("/ayuda", response_class=HTMLResponse)

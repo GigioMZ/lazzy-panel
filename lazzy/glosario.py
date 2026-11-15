@@ -33,6 +33,11 @@ GLOSARIO = {
     "categoria": ("Categoría", "A qué grupo pertenece el gasto. Decide en qué línea aparece: insumos, sueldos, gastos del local o compra de equipos."),
     "equipos": ("Compra de equipos", "Máquinas, muebles y cosas que duran años. No se restan de la ganancia del mes porque no son un gasto de operar: son una inversión."),
     "por_compras": ("Costo por compras", "El panel anota el costo de los insumos el mes en que llega la factura, no el mes en que se usan. Si un mes compras café para dos meses, ese mes se ve peor y el siguiente mejor. Por eso conviene mirar el promedio de varios meses."),
+    "estimacion": ("Venta estimada", "Lo que deberías vender ese día si todo sigue como viene: el promedio del mismo día de la semana en las últimas 8 semanas, ajustado por si las ventas vienen subiendo o bajando. No conoce feriados, lluvia ni eventos. El rango muestra lo normal entre un día flojo y uno bueno."),
+    "tendencia": ("Tendencia", "Compara las ventas de las últimas 4 semanas con las 4 semanas anteriores. Si es positiva, vienes creciendo."),
+    "mapa_horas": ("Mapa de horas", "Cuánto vendes en promedio en cada hora de cada día de la semana, en las últimas 12 semanas. Más oscuro es más venta. Sirve para decidir turnos, horarios de promoción y cuándo poner anuncios."),
+    "precio_sugerido": ("Precio sugerido", "El precio de carta (con IVA) más bajo, terminado en 90, con que el producto llega al margen esperado para su tipo: 70% en lo que se prepara en el local y 45% en lo que se compra hecho. Si habría que subir más de 20%, no se sugiere precio: el problema es el costo."),
+    "extra_mes": ("Ganancia extra al mes", "Cuánto más ganarías al mes con el cambio, si se vendiera la misma cantidad que hoy. Es un máximo: si subes el precio puede que se venda algo menos."),
     "nota_credito": ("Nota de crédito", "Documento con que un proveedor anula o descuenta una factura. Se resta de las compras."),
     "gasto_fijo": ("Gasto fijo", "Un gasto que se repite todos los meses por un monto parecido y que no llega como factura al SII: sueldos, imposiciones, cuentas a nombre de una persona, compras sin factura."),
 }

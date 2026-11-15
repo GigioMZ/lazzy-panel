@@ -1,0 +1,37 @@
+{% extends "base.html" %}{% from "_m.html" import th %}{% block title %}Decisiones{% endblock %}{% block main %}
+<div class="cab"><h1>Decisiones</h1></div>
+<p class="sub">Qué hacer con los números: cuándo poner anuncios, cuándo reforzar el turno, qué precios mover y cuánto esperar vender esta semana. Se calcula con las últimas 12 semanas{% if ini %} (desde el {{ini.day}}-{{'%02d'|format(ini.month)}}){% endif %}.</p>
+
+{% if rec %}<section class="bloque"><h2>Recomendaciones</h2><ul class="pend">{% for r in rec %}<li><p><b>{{r.titulo}}.</b> {{r.texto}}</p></li>{% endfor %}</ul></section>{% endif %}
+
+<section class="bloque"><h2>Esta semana deberías vender {{est.total|clp}} {{ tip('estimacion') }}</h2>
+<p class="sub">Con IVA, como lo ves en caja. {% if est.tendencia is not none %}Las ventas de las últimas 4 semanas van {{ est.tendencia|abs|pct }} {{ 'arriba' if est.tendencia >= 0 else 'abajo' }} de las 4 anteriores {{ tip('tendencia') }}{% if est.topado %} (para estimar se usa como máximo 15%){% endif %}.{% endif %}</p>
+<div class="tabla" style="max-width:760px"><table><tr><th>Día</th><th>Venta estimada</th><th>Rango normal</th><th>Ventas (clientes)</th></tr>
+{% for d in est.dias %}<tr><td>{{d.nombre|capitalize}} {{d.fecha.day}}</td>{% if d.abierto %}<td><b>{{d.venta|clp}}</b></td><td>{{d.min|clp}} a {{d.max|clp}}</td><td>{{d.tickets}}</td>{% else %}<td colspan="3" class="l">Cerrado</td>{% endif %}</tr>{% endfor %}</table></div>
+<p class="nota">Si un día vendes bajo el rango, algo pasó: vale la pena anotarlo (lluvia, feriado, corte de luz) para entender el número.</p></section>
+
+<section class="bloque"><h2>Cuánto vendes cada día de la semana</h2><p class="sub">Promedio por día abierto, con IVA. El sábado abre solo de 10 a 14, por eso se ve más bajo: compáralo con la venta por hora.</p>
+<div class="mil" style="grid-template-columns:minmax(110px,150px) minmax(80px,1fr) 100px minmax(0,230px)">{% for d in dias %}<div class="mf">
+<div class="n">{{d.nombre|capitalize}}</div>{% if d.abierto %}<div class="pista"><div class="barra" style="width:{{d.ancho}}%"></div></div><div class="v">{{d.venta|clp}}</div>
+<div class="m">{{d.tickets}} ventas, {{d.por_hora|clp}} por hora abierta</div>{% else %}<div class="pista"></div><div class="v">—</div><div class="m">cerrado</div>{% endif %}</div>{% endfor %}</div></section>
+
+<section class="bloque"><h2>Mapa de horas {{ tip('mapa_horas') }}</h2><p class="sub">Venta promedio con IVA en cada hora. Más oscuro, más venta. Pasa el mouse sobre una celda para ver cuántas ventas son.</p>
+<div class="tabla"><table class="calor"><tr><th></th>{% for h in mapa.horas %}<th>{{h}} h</th>{% endfor %}</tr>
+{% for f in mapa.filas %}<tr><td>{{f.nombre|capitalize}}</td>{% for c in f.celdas %}<td style="background:{{c.fondo}};color:{{ 'var(--tinta)' if c.claro else '#fff' }}" title="{{f.nombre|capitalize}} de {{c.hora}}:00 a {{c.hora+1}}:00: {{c.venta|clp}} en {{'%g'|format(c.tickets)|replace('.',',')}} ventas promedio">{% if c.venta >= 500 %}{{ (c.venta/1000)|round|int }}{% endif %}</td>{% endfor %}</tr>{% endfor %}</table></div>
+<p class="nota">Los números son miles de pesos: 45 = $45.000 en esa hora.</p></section>
+
+<section class="bloque"><h2>Precios a revisar</h2><p class="sub">Productos que dejan menos margen del esperado para su tipo, ordenados por cuánta plata se pierde. Calculado con {{desde|mesl}} a {{hasta|mesl}}.</p>
+{% set pr = precios|selectattr('accion','equalto','precio')|list %}{% set co = precios|selectattr('accion','equalto','costo')|list %}
+{% if pr %}<div class="tabla"><table><tr><th>Producto</th><th>Al mes</th><th>Precio hoy</th>{{ th('Margen hoy','margen') }}{{ th('Precio sugerido','precio_sugerido') }}<th>Subida</th><th>Margen nuevo</th>{{ th('Ganancia extra al mes','extra_mes') }}</tr>
+{% for x in pr %}<tr><td><a href="/receta?p={{x.producto|urlencode}}">{{x.producto}}</a></td><td>{{x.por_mes|num}}</td><td>{{x.precio_bruto|clp}}</td><td class="malo">{{x.margen_pct|pct(0)}}</td><td><b>{{x.sugerido|clp}}</b></td><td>{{x.subida|pct(0)}}</td><td>{{x.nuevo_margen|pct(0)}}</td><td>{{x.extra_mes|clp}}</td></tr>{% endfor %}</table></div>{% endif %}
+{% if co %}<h3 style="margin-top:24px">Aquí el problema es el costo, no el precio</h3><p class="sub">Habría que subir el precio más de 20% para llegar al margen esperado. Conviene negociar con el proveedor o cambiar el producto.</p>
+<div class="tabla"><table><tr><th>Producto</th><th>Al mes</th><th>Precio hoy</th><th>Te cuesta</th>{{ th('Margen hoy','margen') }}<th>Margen esperado</th><th>Debería costarte</th><th>Pierdes al mes</th></tr>
+{% for x in co %}<tr><td><a href="/receta?p={{x.producto|urlencode}}">{{x.producto}}</a></td><td>{{x.por_mes|num}}</td><td>{{x.precio_bruto|clp}}</td><td>{{x.costo|clp}}</td><td class="malo">{{x.margen_pct|pct(0)}}</td><td>{{x.meta}}%</td><td><b>{{x.costo_obj|clp}}</b></td><td>{{x.extra_mes|clp}}</td></tr>{% endfor %}</table></div>{% endif %}
+{% if not precios %}<p class="aviso ok">Todos los productos con costo cargado llegan al margen esperado.</p>{% endif %}
+<p class="nota">Margen esperado: 70% en lo que se prepara en el local, 45% en lo que se compra hecho. Los productos sin costo cargado no aparecen aquí.</p></section>
+
+<section class="bloque"><h2>Qué se vende más y qué se vende menos</h2><p class="sub">Unidades de las últimas 4 semanas contra las 4 anteriores. Solo productos con al menos 8 unidades. {{ tip('tendencia') }}</p>
+<div class="dos">{% for titulo, lista in [("Subiendo", tend|selectattr('cambio')|selectattr('cambio','gt',0)|list), ("Bajando", (tend|selectattr('cambio')|selectattr('cambio','lt',0)|list)|reverse|list)] %}
+<div><h3>{{titulo}}</h3><div class="tabla"><table><tr><th>Producto</th><th>4 semanas antes</th><th>Últimas 4</th><th>Cambio</th></tr>
+{% for x in lista[:10] %}<tr><td>{{x.producto}}</td><td>{{x.ant}}</td><td>{{x.rec}}</td><td class="{{'malo' if x.cambio < 0}}">{{ '▲' if x.cambio > 0 else '▼' }} {{x.cambio|abs|pct(0)}}</td></tr>{% endfor %}
+{% if not lista %}<tr><td colspan="4" class="l">Ninguno</td></tr>{% endif %}</table></div></div>{% endfor %}</div></section>{% endblock %}
