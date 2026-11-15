@@ -182,7 +182,8 @@ def margen_productos(con, desde, hasta, cfg):
         neto = round(r["b"] / (1 + iva))
         c = costos.get(r["producto"])
         d = {"categoria": r["categoria"], "producto": r["producto"], "cantidad": r["q"], "neto": neto,
-             "precio_neto": round(neto / r["q"]) if r["q"] else 0, "costo": None, "fuente": None,
+             "precio_neto": round(neto / r["q"]) if r["q"] else 0,
+             "precio_bruto": round(r["b"] / r["q"]) if r["q"] else 0, "costo": None, "fuente": None,
              "margen_unit": None, "margen_pct": None, "contribucion": None, "clase": None}
         if c and r["q"]:
             d.update(costo=c["costo"], fuente=c["fuente"], margen_unit=d["precio_neto"] - c["costo"],
@@ -190,14 +191,16 @@ def margen_productos(con, desde, hasta, cfg):
                      contribucion=round(neto - c["costo"] * r["q"]))
         rows.append(d)
     con_costo = [d for d in rows if d["costo"] is not None]
+    umbral = None
     if con_costo:
         q_med = sum(d["cantidad"] for d in con_costo) / len(con_costo)
         m_med = sum(d["contribucion"] for d in con_costo) / sum(d["cantidad"] for d in con_costo)
+        umbral = {"cantidad": round(q_med, 1), "margen": round(m_med)}
         for d in con_costo:
             pop, rent = d["cantidad"] >= q_med, d["margen_unit"] >= m_med
             d["clase"] = {(1, 1): "estrella", (1, 0): "caballo", (0, 1): "puzzle", (0, 0): "perro"}[(pop, rent)]
     total = sum(d["neto"] for d in rows)
-    return {"productos": sorted(rows, key=lambda d: -d["neto"]),
+    return {"productos": sorted(rows, key=lambda d: -d["neto"]), "umbral": umbral,
             "cobertura_pct": round(100 * sum(d["neto"] for d in con_costo) / total, 1) if total else 0.0}
 
 

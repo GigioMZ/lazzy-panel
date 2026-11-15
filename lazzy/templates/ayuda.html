@@ -1,0 +1,7 @@
+{% extends "base.html" %}{% block title %}Ayuda{% endblock %}{% block main %}
+<div class="cab"><h1>Ayuda</h1></div>
+<section><h2>Cómo usar el panel</h2>
+<p class="sub">Una vez por semana: sube los dos reportes de FUDO en <a href="/cargar">Subir archivos</a> y mira <a href="/">Inicio</a>. Una vez al mes, los primeros días: sube las compras del SII del mes anterior, ponle categoría a los proveedores nuevos en <a href="/compras">Facturas y proveedores</a> y revisa el mes cerrado. Cuando un proveedor cambie un precio, actualízalo en <a href="/insumos">Insumos y precios</a> o en <a href="/productos">Productos</a>.</p></section>
+<section class="bloque"><h2>De dónde sale cada número</h2>
+<p class="sub">Las ventas vienen de FUDO. Las compras con factura vienen del SII. Lo que no tiene factura (sueldos, cuentas, compras informales) viene de <a href="/costos-fijos">Gastos fijos</a>. Los costos de cada producto vienen de sus recetas o del precio que tú anotes. Si algo no está en alguno de esos cuatro lugares, el panel no lo sabe.</p></section>
+<section class="bloque"><h2>Qué significa cada palabra</h2><dl class="glos">{% for k, (n, t) in G.items() %}<dt id="{{k}}">{{n}}</dt><dd>{{t}}</dd>{% endfor %}</dl></section>{% endblock %}

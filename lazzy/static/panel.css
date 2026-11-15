@@ -1,0 +1,180 @@
+/* Lazzy Coffee · panel. Colores y tipografías tomados del logo y de lazzycoffee.cl */
+@font-face{font-family:"DM Sans";font-weight:400;font-display:swap;src:url(fonts/dm-sans-latin-400-normal.woff2) format("woff2")}
+@font-face{font-family:"DM Sans";font-weight:500;font-display:swap;src:url(fonts/dm-sans-latin-500-normal.woff2) format("woff2")}
+@font-face{font-family:"DM Sans";font-weight:600;font-display:swap;src:url(fonts/dm-sans-latin-600-normal.woff2) format("woff2")}
+@font-face{font-family:"DM Sans";font-weight:700;font-display:swap;src:url(fonts/dm-sans-latin-700-normal.woff2) format("woff2")}
+@font-face{font-family:"DM Serif Display";font-weight:400;font-display:swap;src:url(fonts/dm-serif-display-latin-400-normal.woff2) format("woff2")}
+:root{
+  --crema:#fef1d1;      /* fondo del logo */
+  --papel:#fffcf5;      /* fondo de trabajo */
+  --tinta:#203548;      /* azul pizarra del logo */
+  --tinta-2:#51636f;    /* texto secundario */
+  --sol:#ffd040;        /* amarillo de la web */
+  --linea:#eadfc4;
+  --linea-2:#f3ead3;
+  --azul:#2f6f9f;       /* serie 1 de gráficos */
+  --oro:#b8860b;        /* serie 2 de gráficos */
+  --ok:#256b47; --ok-bg:#e2f1e7;
+  --warn:#8a5200; --warn-bg:#fcebc8;
+  --bad:#a12e27; --bad-bg:#f9e0dc;
+  --display:"DM Serif Display",Georgia,serif;
+  --texto:"DM Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;font:400 15px/1.5 var(--texto);background:var(--papel);color:var(--tinta);font-variant-numeric:tabular-nums}
+a{color:var(--tinta);text-underline-offset:3px}
+h1,h2,h3{margin:0;font-weight:400}
+h1{font:400 34px/1.1 var(--display);letter-spacing:-.01em}
+h2{font:400 22px/1.2 var(--display);margin-bottom:6px}
+h3{font:600 15px/1.3 var(--texto)}
+p{margin:0 0 10px}
+.sub{color:var(--tinta-2);max-width:68ch}
+:focus-visible{outline:3px solid var(--sol);outline-offset:2px;border-radius:4px}
+
+/* estructura */
+.app{display:grid;grid-template-columns:232px minmax(0,1fr);min-height:100vh}
+.lado{background:var(--crema);padding:18px 14px 24px;position:sticky;top:0;height:100vh;overflow-y:auto;display:flex;flex-direction:column}
+.lado .logo{display:block;width:132px;margin:0 auto 10px}
+.lado .logo img{width:100%;display:block}
+.lado h3{font:600 12.5px/1 var(--texto);color:var(--tinta-2);margin:18px 10px 6px}
+.lado a.item{display:block;padding:8px 10px;border-radius:8px;text-decoration:none;font-weight:500}
+.lado a.item:hover{background:#fbe6b3}
+.lado a.item.on{background:var(--sol);font-weight:700}
+.lado .pie{margin-top:auto;padding:14px 10px 0;font-size:13px;color:var(--tinta-2);border-top:1px solid #f0dfb2}
+.lado .pie a{color:var(--tinta-2)}
+main{padding:30px 36px 60px;max-width:1180px;width:100%}
+.cab{display:flex;flex-wrap:wrap;gap:12px 18px;align-items:center;margin-bottom:22px}
+.cab h1{margin-right:auto}
+.bloque{margin-top:38px}
+.bloque>.sub{margin-bottom:14px}
+.dos{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:34px 40px}
+
+/* veredicto: lo único grande de la página */
+.veredicto{font:400 clamp(30px,4.4vw,50px)/1.08 var(--display);letter-spacing:-.015em;max-width:21ch;margin:6px 0 12px}
+.veredicto-det{font-size:17px;max-width:62ch;color:var(--tinta-2);margin-bottom:10px}
+.comparacion{display:inline-flex;gap:8px;align-items:center;font-weight:500}
+
+/* estados: siempre con ícono y palabra, nunca solo color */
+.st{display:inline-flex;align-items:center;gap:5px;padding:2px 9px 2px 7px;border-radius:99px;font-size:13px;font-weight:600;white-space:nowrap}
+.st::before{font-weight:700}
+.st.ok{background:var(--ok-bg);color:var(--ok)}.st.ok::before{content:"✓"}
+.st.warn{background:var(--warn-bg);color:var(--warn)}.st.warn::before{content:"!"}
+.st.bad{background:var(--bad-bg);color:var(--bad)}.st.bad::before{content:"✕"}
+.st.neutro{background:var(--linea-2);color:var(--tinta-2)}
+
+/* desglose por cada $1.000 */
+.mil{display:grid;grid-template-columns:minmax(150px,220px) minmax(80px,1fr) 64px minmax(0,250px);gap:9px 14px;align-items:center;max-width:860px}
+.mil .mf{display:contents}
+.mil .n{font-weight:500;display:flex;align-items:center;gap:6px}
+.mil .pista{height:16px;background:var(--linea-2);border-radius:0 4px 4px 0}
+.mil .barra{height:16px;background:var(--azul);border-radius:0 4px 4px 0;min-width:2px}
+.mil .barra.gana{background:var(--ok)}.mil .barra.pierde{background:var(--bad)}
+.mil .v{font-weight:700;text-align:right}
+.mil .m{font-size:13.5px;color:var(--tinta-2);white-space:nowrap}
+.mil .total{grid-column:1/-1;border-top:1px solid var(--linea);margin-top:2px}
+
+/* indicadores */
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));border-top:1px solid var(--linea);border-bottom:1px solid var(--linea)}
+.kpi{padding:16px 18px 16px 0;margin-left:18px;border-left:1px solid var(--linea);padding-left:18px}
+.kpi:first-child{margin-left:0;border-left:0;padding-left:0}
+.kpi .t{font-weight:500;color:var(--tinta-2);white-space:nowrap}
+.kpi .t .tip,.kpi .d .tip{margin-left:3px}
+.kpi .n{font:400 30px/1.15 var(--display);margin:4px 0 6px}
+.kpi .d{font-size:13.5px;color:var(--tinta-2)}
+
+/* pendientes */
+.pend{list-style:none;margin:0;padding:0;max-width:860px}
+.pend li{display:flex;gap:14px;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--linea)}
+.pend li:first-child{border-top:1px solid var(--linea)}
+.pend p{margin:0;max-width:62ch}
+
+/* tablas */
+.tabla{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:14.5px}
+th,td{padding:8px 8px;border-bottom:1px solid var(--linea);text-align:right;vertical-align:middle;white-space:nowrap}
+th{font-weight:600;color:var(--tinta-2);font-size:13.5px;border-bottom:2px solid var(--tinta);vertical-align:bottom}
+th:first-child,td:first-child,th.l,td.l{text-align:left}
+td.w,th.w{white-space:normal}
+#tp td:first-child{white-space:normal;min-width:150px}
+form.junto .btn{visibility:hidden}
+form.junto.cambio .btn,form.junto:focus-within .btn{visibility:visible}
+tr.fuerte td{font-weight:700;background:var(--crema)}
+tr.hijo td:first-child{padding-left:26px;color:var(--tinta-2)}
+tr.hijo td{color:var(--tinta-2);font-size:14px}
+tr.falta td{background:#fff6dd}
+td.malo{color:var(--bad);font-weight:600}
+.th-in{display:inline-flex;align-items:center;gap:5px}
+
+/* formularios */
+input,select,button{font:inherit;color:inherit}
+input,select{padding:6px 9px;border:1px solid #cdbf9c;border-radius:7px;background:#fff;min-height:36px}
+input.n{width:98px;text-align:right}
+input.c{width:62px}
+.btn{display:inline-flex;align-items:center;justify-content:center;min-height:36px;padding:6px 14px;border-radius:7px;border:1px solid var(--tinta);background:var(--tinta);color:#fff;font-weight:600;cursor:pointer;text-decoration:none;white-space:nowrap}
+.btn:hover{background:#16283a}
+.btn.sec{background:transparent;color:var(--tinta)}
+.btn.sec:hover{background:var(--crema)}
+form.fila{display:inline-flex;gap:8px;align-items:center;margin:0;flex-wrap:wrap}
+form.fila label{display:inline-flex;align-items:center;gap:6px}
+form.fila.junto{flex-wrap:nowrap;gap:5px}
+input.n.chico{width:84px}
+.btn.mini{min-height:32px;padding:3px 9px;font-size:13.5px}
+.filtros{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:14px 0}
+.chip{display:inline-flex;gap:6px;align-items:center;padding:5px 12px;border-radius:99px;border:1px solid #cdbf9c;background:#fff;cursor:pointer;font-weight:500;font-size:14px}
+.chip[aria-pressed=true]{background:var(--tinta);border-color:var(--tinta);color:#fff}
+.chip b{font-weight:700}
+.paso{display:inline-flex;align-items:center;gap:4px}
+.paso a{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:7px;border:1px solid #cdbf9c;background:#fff;text-decoration:none;font-weight:700}
+.paso a[aria-disabled=true]{opacity:.35;pointer-events:none}
+
+/* avisos */
+.aviso{background:var(--crema);border-left:4px solid var(--sol);border-radius:0 8px 8px 0;padding:11px 14px;margin:0 0 18px;max-width:860px}
+.aviso.ok{border-left-color:var(--ok);background:var(--ok-bg)}
+.aviso.bad{border-left-color:var(--bad);background:var(--bad-bg)}
+
+/* grupos de productos */
+.gr{display:inline-block;padding:2px 9px;border-radius:99px;font-size:13px;font-weight:600;background:var(--linea-2);white-space:nowrap}
+.gr.estrella{background:var(--sol)}
+.gr.caballo{background:var(--warn-bg);color:var(--warn)}
+.gr.puzzle{background:#dde9f3;color:#214f73}
+.gr.perro{background:var(--bad-bg);color:var(--bad)}
+.leyenda{display:grid;grid-template-columns:repeat(auto-fit,minmax(205px,1fr));gap:12px 26px;margin:14px 0 6px;max-width:980px}
+.leyenda p{margin:4px 0 0;font-size:14px;color:var(--tinta-2)}
+
+/* ayuda «?» */
+.tip{all:unset;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;border:1.5px solid var(--tinta-2);color:var(--tinta-2);font:700 11px/1 var(--texto);cursor:help;flex:none;vertical-align:middle;position:relative}
+.tip:hover,.tip:focus-visible{background:var(--tinta);border-color:var(--tinta);color:#fff}
+.tip-t{display:none;position:fixed;z-index:50;width:min(310px,calc(100vw - 24px));padding:11px 13px;border-radius:9px;background:var(--tinta);color:#fff;font:400 13.5px/1.45 var(--texto);text-align:left;white-space:normal;box-shadow:0 10px 30px rgba(32,53,72,.28)}
+.tip-t b{display:block;font-weight:700;margin-bottom:3px;color:var(--sol)}
+.tip.abierto .tip-t{display:block}
+
+.grafico{position:relative;height:270px}
+.grafico.alto{height:400px}
+.nota{font-size:13.5px;color:var(--tinta-2);margin-top:8px}
+dl.glos{max-width:760px;margin:0}
+dl.glos dt{font-weight:700;margin-top:16px}
+dl.glos dd{margin:2px 0 0;color:var(--tinta-2)}
+.login{min-height:100vh;display:grid;place-items:center;background:var(--crema);padding:20px}
+.login form{display:grid;gap:10px;width:min(320px,100%)}
+.login img{width:170px;margin:0 auto 6px;display:block}
+
+@media (max-width:860px){
+  .app{grid-template-columns:1fr}
+  .lado{position:static;height:auto;flex-direction:row;align-items:center;gap:4px;padding:8px 10px;overflow-x:auto;white-space:nowrap}
+  .lado .logo{width:54px;margin:0 6px 0 0;flex:none}
+  .lado h3,.lado .pie{display:none}
+  .lado a.item{padding:8px 11px}
+  main{padding:20px 16px 50px}
+  h1{font-size:28px}
+  .mil{display:block}
+  .mil .mf{display:grid;grid-template-columns:1fr auto;gap:3px 10px;margin-bottom:14px}
+  .mil .pista,.mil .m{grid-column:1/-1}
+  .mil .m{white-space:normal}
+  .mil .total{margin:0 0 14px}
+  .kpi{margin-left:0;border-left:0;padding-left:0;border-top:1px solid var(--linea)}
+  .kpi:first-child{border-top:0}
+  .kpis{border-top:0}
+  .pend li{flex-direction:column}
+}
+@media (prefers-reduced-motion:no-preference){.mil .barra{transition:width .5s ease-out}}

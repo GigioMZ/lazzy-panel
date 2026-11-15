@@ -27,7 +27,7 @@ def login(c):
 
 def test_requiere_login(tmp_path):
     c, _ = client(tmp_path)
-    for url in ("/", "/resultados", "/productos", "/insumos", "/compras", "/costos-fijos", "/impuestos", "/cargar"):
+    for url in ("/", "/resultados", "/productos", "/insumos", "/compras", "/costos-fijos", "/impuestos", "/cargar", "/ayuda"):
         r = c.get(url)
         assert r.status_code == 303 and r.headers["location"] == "/login"
     assert c.post("/insumos", data={"nombre": "x"}).status_code == 303
@@ -37,15 +37,17 @@ def test_paginas_y_edicion(tmp_path):
     c, con = client(tmp_path)
     csrf = login(c)
     for url in ("/?periodo=2026-10", "/resultados", "/productos", "/insumos", "/compras", "/costos-fijos",
-                "/impuestos", "/cargar", "/receta?p=Latte"):
+                "/impuestos", "/cargar", "/receta?p=Latte", "/ayuda", "/?periodo=1999-01"):
         assert c.get(url).status_code == 200, url
-    assert "sin clasificar" in c.get("/?periodo=2026-10").text
+    inicio = c.get("/?periodo=2026-10").text
+    assert "proveedores sin categoría" in inicio and "Facturas sin categoría" in inicio
+    assert 'class="tip"' in inicio and "te quedaron" in inicio
     # sin token CSRF no se puede escribir
     assert c.post("/insumos", data={"nombre": "Leche", "unidad": "ml", "cantidad": "1000", "precio": "1000"}).status_code == 403
     c.post("/insumos", data={"csrf": csrf, "nombre": "Leche", "unidad": "ml", "cantidad": "1000", "precio": "1.000"})
     iid = con.execute("SELECT id FROM insumo").fetchone()[0]
     c.post("/receta", data={"csrf": csrf, "producto": "Latte", "insumo_id": iid, "cantidad": "300"})
-    assert "receta" in c.get("/productos?desde=2026-10&hasta=2026-10").text
+    assert "El costo sale de la receta" in c.get("/productos?desde=2026-10&hasta=2026-10").text
     from lazzy.finance import load_cfg
     assert load_cfg(con)["costo_producto"]["Latte"]["costo"] == 300
     c.post("/compras/proveedor", data={"csrf": csrf, "rut": "1-9", "nombre": "CAFE SA", "categoria": "cafe"})

@@ -1,26 +1,61 @@
-{% extends "base.html" %}{% block title %}Resumen{% endblock %}{% block main %}
-<div class="bar"><h1 style="margin:0">Resumen · {{per|mes}}</h1>
-<form class="inline"><select name="periodo" onchange="this.form.submit()">{% for x in ps|reverse %}<option value="{{x}}" {{'selected' if x==per}}>{{x|mes}}</option>{% endfor %}</select></form></div>
-{% if parcial %}<div class="note">Mes en curso: las ventas son parciales pero los costos fijos están completos, así que el resultado se ve peor de lo real.</div>{% endif %}
-{% if not p.tiene_compras %}<div class="note">No hay registro de compras del SII cargado para este mes: el costo de venta y el IVA crédito están incompletos. <a href="/cargar">Cargar</a></div>{% endif %}
-{% if p.sin_clasificar %}<div class="note">Hay {{p.sin_clasificar|clp}} en facturas de proveedores sin clasificar. <a href="/compras">Clasificar</a></div>{% endif %}
-<div class="grid">
-<div class="kpi"><small>Venta neta</small><strong>{{p.ventas.neto|clp}}</strong><em>{{p.ventas.tickets|num}} tickets · ticket {{p.ventas.ticket_promedio|clp}}</em></div>
-<div class="kpi {{sem.margen_bruto}}"><small>Margen bruto</small><strong>{{p.pct.margen_bruto}}%</strong><em>meta ≥ 65% · costo {{p.pct.costo_venta}}%</em></div>
-<div class="kpi {{sem.prime_cost}}"><small>Prime cost (insumos + personal)</small><strong>{{p.pct.prime_cost}}%</strong><em>meta ≤ 60%</em></div>
-<div class="kpi {{sem.resultado}}"><small>Resultado operacional</small><strong>{{p.resultado_operacional|clp}}</strong><em>{{p.pct.resultado}}% · meta ≥ 10%</em></div>
-<div class="kpi"><small>IVA a pagar (estimado)</small><strong>{{p.iva.iva_a_pagar|clp}}</strong><em>F29 con PPM {{p.iva.f29_estimado|clp}}</em></div>
-<div class="kpi"><small>Punto de equilibrio</small><strong>{{p.equilibrio.venta_bruta_dia|clp}}</strong><em>venta bruta por día abierto ({{p.ventas.dias_abiertos}} días)</em></div>
-</div>
-<div class="two"><div class="card"><h2>Venta neta y resultado, últimos 12 meses</h2><canvas id="c1" height="150"></canvas></div>
-<div class="card"><h2>Venta por hora · {{per|mes}}</h2><canvas id="c2" height="150"></canvas></div></div>
-<div class="two"><div class="card"><h2>Productos que más aportan</h2><table><tr><th>Producto</th><th>Cant.</th><th>Margen</th><th>Aporte</th><th></th></tr>
-{% for d in (top.productos|selectattr("contribucion")|sort(attribute="contribucion",reverse=true))[:10] %}<tr><td>{{d.producto}}</td><td>{{d.cantidad|num}}</td><td>{{d.margen_pct}}%</td><td>{{d.contribucion|clp}}</td><td><span class="tag {{d.clase}}">{{d.clase}}</span></td></tr>{% endfor %}</table>
-<p><em style="color:var(--mut)">Costeado el {{top.cobertura_pct}}% de la venta. <a href="/productos">Ver todos</a></em></p></div>
-<div class="card"><h2>Medios de pago</h2><table><tr><th>Medio</th><th>Venta bruta</th><th>%</th></tr>
-{% for m in medios %}<tr><td>{{m.medio}}</td><td>{{m.bruto|clp}}</td><td>{{(100*m.bruto/p.ventas.bruto)|round(1) if p.ventas.bruto}}%</td></tr>{% endfor %}</table></div></div>
-<script src="/static/chart.umd.js"></script><script>
-const D={{chart|safe}},k=v=>'$'+Math.round(v/1000).toLocaleString('es-CL')+'k';
-new Chart(c1,{data:{labels:D.labels,datasets:[{type:'bar',label:'Venta neta',data:D.ventas,backgroundColor:'#cfd9d4'},{type:'line',label:'Resultado',data:D.resultado,borderColor:'#3b5d50',backgroundColor:'#3b5d50',tension:.25,spanGaps:false}]},options:{scales:{y:{ticks:{callback:k}}}}});
-new Chart(c2,{type:'bar',data:{labels:D.horas.map(h=>h.hora+':00'),datasets:[{label:'Venta bruta',data:D.horas.map(h=>h.bruto),backgroundColor:'#3b5d50'}]},options:{plugins:{legend:{display:false}},scales:{y:{ticks:{callback:k}}}}});
+{% extends "base.html" %}{% block title %}Inicio{% endblock %}{% block main %}
+<div class="cab"><h1>{{per|mesl|capitalize}}</h1>
+<div class="paso"><a href="/?periodo={{ant}}" aria-label="Mes anterior" {% if not ant %}aria-disabled="true"{% endif %}>‹</a>
+<form class="fila"><select name="periodo" onchange="this.form.submit()" aria-label="Elegir mes">{% for x in ps|reverse %}<option value="{{x}}" {{'selected' if x==per}}>{{x|mesl}}</option>{% endfor %}</select></form>
+<a href="/?periodo={{sig}}" aria-label="Mes siguiente" {% if not sig %}aria-disabled="true"{% endif %}>›</a></div></div>
+
+<p class="veredicto">{{v.titulo}}</p>
+<p class="veredicto-det">{{v.detalle}} {% if v.con_resultado %}{{ tip('ganancia') }}{% endif %}</p>
+{% if v.con_resultado %}<p class="comparacion"><span class="st {{v.tono}}">{{ {'ok':'Buen mes','warn':'Mes justo','bad':'Mes malo'}[v.tono] }}</span>
+{% if kpi.dif_prom is not none %}{{ kpi.dif_prom|abs|clp }} {{ 'más' if kpi.dif_prom >= 0 else 'menos' }} que el promedio de {{ 'los ' ~ ctx.n_prom ~ ' meses anteriores' if ctx.n_prom > 1 else 'el mes anterior' }}.{% endif %}</p>
+{% elif not parcial %}<p><a class="btn" href="/cargar">Subir compras del SII</a></p>{% endif %}
+
+{% if des %}<section class="bloque"><h2>¿En qué se fue cada $1.000 que vendiste?</h2>
+<p class="sub">Vendiste {{p.ventas.neto|clp}} sin IVA. Así se repartió esa plata.</p>
+<div class="mil">{% for f in des %}{% if loop.last %}<div class="total"></div>{% endif %}
+<div class="mf"><div class="n">{{f.nombre}} {{ tip(f.clave) }}</div>
+<div class="pista"><div class="barra {{f.tipo if f.tipo != 'costo'}}" style="width:{{f.ancho}}%"></div></div>
+<div class="v">{{ '-' if f.por_mil < 0 }}${{ f.por_mil|abs }}</div>
+<div class="m">{{ f.monto|abs|clp }}{% if f.meta %} ({{f.meta}}){% endif %}</div></div>{% endfor %}</div></section>{% endif %}
+
+<section class="bloque"><h2>Los números del mes</h2>
+<div class="kpis">
+<div class="kpi"><div class="t">Vendiste (sin IVA) {{ tip('venta_neta') }}</div><div class="n">{{p.ventas.neto|clp}}</div>
+<div class="d">{% if kpi.var_venta is not none and not parcial %}{{ '▲' if kpi.var_venta >= 0 else '▼' }} {{ kpi.var_venta|abs|pct }} {{ 'más' if kpi.var_venta >= 0 else 'menos' }} que {{ ctx.prev.periodo|mesl }}<br>{% endif %}{{p.ventas.tickets|num}} ventas, {{p.ventas.ticket_promedio|clp}} promedio por venta {{ tip('ticket') }}</div></div>
+{% if v.con_resultado %}
+<div class="kpi"><div class="t">Insumos {{ tip('insumos') }}</div><div class="n">${{kpi.insumos}}</div>
+<div class="d">de cada $1.000 vendidos<br><span class="st {{kpi.e_insumos}}">{{ {'ok':'Bien','warn':'Atención','bad':'Alto'}[kpi.e_insumos] }}</span> lo sano es hasta $350</div></div>
+<div class="kpi"><div class="t">Insumos + sueldos {{ tip('insumos_sueldos') }}</div><div class="n">${{kpi.ins_sue}}</div>
+<div class="d">de cada $1.000 vendidos<br><span class="st {{kpi.e_ins_sue}}">{{ {'ok':'Bien','warn':'Atención','bad':'Alto'}[kpi.e_ins_sue] }}</span> lo sano es hasta $600</div></div>
+{% endif %}
+<div class="kpi"><div class="t">Venta mínima diaria {{ tip('equilibrio') }}</div><div class="n">{{p.equilibrio.venta_bruta_dia|clp}}</div>
+<div class="d">para no perder plata<br>{% if kpi.e_dia %}<span class="st {{kpi.e_dia}}">{{ 'La superas' if kpi.e_dia=='ok' else 'No llegas' }}</span> {% endif %}vendiste {{kpi.dia|clp}} por día en {{p.ventas.dias_abiertos}} días abiertos</div></div>
+{% if p.tiene_compras and not parcial %}<div class="kpi"><div class="t">IVA a pagar {{ tip('iva_pagar') }}</div><div class="n">{{p.iva.iva_a_pagar|clp}}</div>
+<div class="d">estimado, {% if p.iva.ppm %}más {{p.iva.ppm|clp}} de PPM{% else %}sin PPM configurado{% endif %} {{ tip('ppm') }}<br><a href="/impuestos">Ver todos los meses</a></div></div>{% endif %}
+</div></section>
+
+{% if pend %}<section class="bloque"><h2>Por hacer</h2><p class="sub">Lo que falta para que estos números sean confiables, y dónde conviene actuar.</p>
+<ul class="pend">{% for x in pend %}<li><p>{{x.texto}}</p><a class="btn sec" href="{{x.url}}">{{x.accion}}</a></li>{% endfor %}</ul></section>{% endif %}
+
+<section class="bloque dos">
+<div><h2>Ventas y ganancia, últimos 12 meses</h2><p class="sub">La ganancia solo aparece en los meses que tienen compras del SII cargadas. <a href="/resultados">Ver en tabla</a></p><div class="grafico"><canvas id="c1" role="img" aria-label="Ventas sin IVA y ganancia por mes"></canvas></div></div>
+<div><h2>¿A qué hora vendes más?</h2><p class="sub">{% if pico is not none %}Tu hora más fuerte en {{per|mesl}} fue entre las {{pico}}:00 y las {{pico+1}}:00.{% endif %} Venta con IVA sumada de todo el mes.</p><div class="grafico"><canvas id="c2" role="img" aria-label="Venta por hora del día"></canvas></div></div>
+</section>
+
+<section class="bloque dos">
+<div><h2>Los productos que más plata dejaron</h2><div class="tabla"><table><tr><th>Producto</th><th>Vendidos</th><th><span class="th-in">Margen {{ tip('margen') }}</span></th><th><span class="th-in">Ganancia total {{ tip('aporte') }}</span></th></tr>
+{% for d in (top.productos|selectattr("contribucion")|sort(attribute="contribucion",reverse=true))[:8] %}<tr><td>{{d.producto}}</td><td>{{d.cantidad|num}}</td><td>{{d.margen_pct|pct(0)}}</td><td>{{d.contribucion|clp}}</td></tr>{% endfor %}</table></div>
+<p class="nota">Calculado con los productos que tienen costo cargado ({{top.cobertura_pct|pct(0)}} de la venta). <a href="/productos">Ver todos los productos</a></p></div>
+<div><h2>Cómo te pagaron</h2><div class="tabla"><table><tr><th>Medio de pago</th><th><span class="th-in">Venta con IVA {{ tip('venta_bruta') }}</span></th><th>Parte del total</th></tr>
+{% for m in medios %}<tr><td>{{m.medio|replace("Tarj.","Tarjeta de")|lower|capitalize}}</td><td>{{m.bruto|clp}}</td><td>{{(100*m.bruto/p.ventas.bruto)|pct(0) if p.ventas.bruto}}</td></tr>{% endfor %}</table></div></div>
+</section>{% endblock %}
+{% block js %}<script src="/static/chart.umd.js"></script><script>
+LZ.base(); const D={{chart|safe}};
+new Chart(document.getElementById('c1'),{data:{labels:D.labels,datasets:[
+ {type:'line',label:'Ganancia',data:D.ganancia,borderColor:LZ.oro,backgroundColor:LZ.oro,borderWidth:2,pointRadius:5,pointHoverRadius:7,pointBorderColor:LZ.papel,pointBorderWidth:2,spanGaps:false,order:1},
+ {type:'bar',label:'Ventas sin IVA',data:D.ventas,backgroundColor:LZ.azul,maxBarThickness:24,borderRadius:{topLeft:4,topRight:4},order:2}]},
+ options:{interaction:{mode:'index',intersect:false},scales:{x:{grid:{display:false},ticks:{maxRotation:0,autoSkip:false}},y:{ticks:{callback:LZ.corto,maxTicksLimit:6}}},
+ plugins:{legend:{reverse:true},tooltip:{callbacks:{label:c=>c.dataset.label+': '+(c.raw==null?'sin datos':LZ.clp(c.raw))}}}}});
+new Chart(document.getElementById('c2'),{type:'bar',data:{labels:D.horas.map(h=>h.hora+' h'),datasets:[{label:'Venta con IVA',data:D.horas.map(h=>h.bruto),backgroundColor:LZ.azul,maxBarThickness:24,borderRadius:{topLeft:4,topRight:4}}]},
+ options:{plugins:{legend:{display:false},tooltip:{callbacks:{title:t=>'Entre las '+parseInt(t[0].label)+':00 y las '+(parseInt(t[0].label)+1)+':00',label:c=>LZ.clp(c.raw)+' en '+D.horas[c.dataIndex].tickets+' ventas'}}},scales:{x:{grid:{display:false},ticks:{maxRotation:0}},y:{ticks:{callback:LZ.corto,maxTicksLimit:6}}}}});
 </script>{% endblock %}

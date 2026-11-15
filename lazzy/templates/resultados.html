@@ -1,15 +1,18 @@
-{% extends "base.html" %}{% block title %}Resultados{% endblock %}{% block main %}
-<div class="bar"><h1 style="margin:0">Estado de resultados</h1><form class="inline">Desde <select name="desde">{% for x in ps %}<option {{'selected' if x==desde}} value="{{x}}">{{x|mes}}</option>{% endfor %}</select>
-hasta <select name="hasta">{% for x in ps %}<option {{'selected' if x==hasta}} value="{{x}}">{{x|mes}}</option>{% endfor %}</select><button>Ver</button></form></div>
-<div class="note">El costo de venta se registra por compras del mes (no por consumo), por eso salta entre meses. Mira el promedio.</div>
-{% set n = cols|length %}{% macro fila(t, key, cls="", neg=false) %}<tr class="{{cls}}"><td>{{t}}</td>{% for p in cols %}<td>{{(-p[key] if neg else p[key])|clp}}</td>{% endfor %}<td>{{((cols|sum(attribute=key))/n * (-1 if neg else 1))|round|int|clp}}</td></tr>{% endmacro %}
-<div class="card"><table><tr><th></th>{% for p in cols %}<th>{{p.periodo|mes}}{{'*' if not p.tiene_compras}}</th>{% endfor %}<th>Promedio</th></tr>
-<tr class="tot"><td>Ventas netas</td>{% for p in cols %}<td>{{p.ventas.neto|clp}}</td>{% endfor %}<td>{{((cols|sum(attribute="ventas.neto"))/n)|round|int|clp}}</td></tr>
-{% for g,t in grupos %}{{ fila(t, g, "tot" if g=="sin_clasificar" else "", true) }}
-{% for c in lineas[g] %}<tr class="sub"><td>{{c|replace("_"," ")}}</td>{% for p in cols %}<td>{{(-(p.lineas.get(g,{}).get(c,0)))|clp}}</td>{% endfor %}<td></td></tr>{% endfor %}
-{% if g=="costo_venta" %}{{ fila("MARGEN BRUTO","margen_bruto","tot") }}<tr class="sub"><td>% margen bruto</td>{% for p in cols %}<td>{{p.pct.margen_bruto}}%</td>{% endfor %}<td></td></tr>{% endif %}{% endfor %}
-{{ fila("RESULTADO OPERACIONAL","resultado_operacional","tot") }}
-<tr class="sub"><td>% resultado</td>{% for p in cols %}<td class="{{'neg' if p.pct.resultado<0}}">{{p.pct.resultado}}%</td>{% endfor %}<td></td></tr>
-<tr class="sub"><td>% prime cost</td>{% for p in cols %}<td>{{p.pct.prime_cost}}%</td>{% endfor %}<td></td></tr>
-{{ fila("Inversión en equipos (no resta)","inversion") }}
-</table><p><em style="color:var(--mut)">* mes sin registro de compras del SII cargado.</em></p></div>{% endblock %}
+{% extends "base.html" %}{% from "_m.html" import rango_meses %}{% block title %}Mes a mes{% endblock %}{% block main %}
+<div class="cab"><h1>Mes a mes</h1>{{ rango_meses(ps, desde, hasta) }}</div>
+<p class="sub">Lo que vendiste, en qué se gastó y cuánto quedó cada mes. Todos los montos van sin IVA.</p>
+<p class="aviso">Los insumos se anotan el mes en que llega la factura, no cuando se usan, así que un mes puede verse peor que otro solo porque compraste más. Mira la columna Promedio. {{ tip('por_compras') }}</p>
+{% macro celda(p, valor) %}{% if p.completo %}{{ valor|clp }}{% else %}<span title="Falta el archivo de compras del SII">—</span>{% endif %}{% endmacro %}
+<div class="tabla"><table><tr><th></th>{% for p in cols %}<th>{{p.periodo|mes}}</th>{% endfor %}<th>Promedio</th></tr>
+<tr class="fuerte"><td><span class="th-in">Vendiste {{ tip('venta_neta') }}</span></td>{% for p in cols %}<td>{{p.ventas.neto|clp}}</td>{% endfor %}<td>{{prom.ventas|clp}}</td></tr>
+{% for g, t, clave in grupos %}{% if g != 'sin_clasificar' or prom[g] or cols|selectattr(g)|list %}
+<tr><td><span class="th-in">{{t}} {{ tip(clave) }}</span></td>{% for p in cols %}<td>{{ celda(p, -p[g]) if g in ('costo_venta','sin_clasificar') else (-p[g])|clp }}</td>{% endfor %}<td>{{ (-prom[g])|clp }}</td></tr>
+{% if g != 'sin_clasificar' and lineas[g]|length > 1 %}{% for c in lineas[g] %}<tr class="hijo"><td>{{c|cat}}</td>{% for p in cols %}<td>{{ (-(p.lineas.get(g,{}).get(c,0)))|clp }}</td>{% endfor %}<td></td></tr>{% endfor %}{% endif %}
+{% if g == 'costo_venta' %}<tr><td><span class="th-in">Queda después de insumos {{ tip('margen_bruto') }}</span></td>{% for p in cols %}<td>{{ celda(p, p.margen_bruto) }}</td>{% endfor %}<td>{{prom.margen_bruto|clp}}</td></tr>{% endif %}
+{% endif %}{% endfor %}
+<tr class="fuerte"><td><span class="th-in">Ganancia del mes {{ tip('ganancia') }}</span></td>{% for p in cols %}<td class="{{'malo' if p.completo and p.resultado_operacional<0}}">{{ celda(p, p.resultado_operacional) }}</td>{% endfor %}<td>{{prom.resultado_operacional|clp}}</td></tr>
+<tr class="hijo"><td>Ganancia por cada $1.000 vendidos</td>{% for p in cols %}<td>{% if p.completo %}${{ (p.pct.resultado*10)|round|int }}{% else %}—{% endif %}</td>{% endfor %}<td>{% if prom.ventas %}${{ (1000*prom.resultado_operacional/prom.ventas)|round|int }}{% endif %}</td></tr>
+<tr class="hijo"><td><span class="th-in">Insumos + sueldos por cada $1.000 {{ tip('insumos_sueldos') }}</span></td>{% for p in cols %}<td>{% if p.completo %}${{ (p.pct.prime_cost*10)|round|int }}{% else %}—{% endif %}</td>{% endfor %}<td></td></tr>
+{% if cols|selectattr('inversion')|list %}<tr><td><span class="th-in">Compra de equipos (no se resta) {{ tip('equipos') }}</span></td>{% for p in cols %}<td>{{p.inversion|clp}}</td>{% endfor %}<td></td></tr>{% endif %}
+</table></div>
+<p class="nota">La raya (—) significa que falta subir el archivo de compras del SII de ese mes o que el mes aún no termina. El promedio usa solo los {{prom.n}} meses completos. <a href="/cargar">Subir archivos</a></p>{% endblock %}

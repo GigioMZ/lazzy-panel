@@ -18,9 +18,13 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
+from markupsafe import Markup, escape
+
 from . import finance as F
+from . import insights as I
 from .auth import check_password
 from .db import connect
+from .glosario import CAT_NOMBRE, CATEGORIAS_UI, GLOSARIO, GRUPO_NOMBRE
 from .importers.fudo_report import import_fudo_productos, import_fudo_report
 from .importers.rcv import import_rcv_compras
 
@@ -45,8 +49,26 @@ app.mount("/static", StaticFiles(directory=str(Path(__file__).parent / "static")
 T = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 T.env.filters["clp"] = lambda x: "—" if x is None else ("-" if x < 0 else "") + f"${abs(x):,.0f}".replace(",", ".")
 T.env.filters["num"] = lambda x: f"{x:,.0f}".replace(",", ".")
+T.env.filters["pct"] = lambda x, d=1: "—" if x is None else f"{x:.{d}f}".replace(".", ",") + "%"
 MESES = "ene feb mar abr may jun jul ago sep oct nov dic".split()
 T.env.filters["mes"] = lambda p: f"{MESES[int(p[5:7]) - 1]} {p[:4]}"
+T.env.filters["mesl"] = I.mes_largo
+T.env.filters["cat"] = lambda c: CAT_NOMBRE.get(c, "Sin categoría") if c else "Sin categoría"
+T.env.filters["grupo"] = lambda g: GRUPO_NOMBRE.get(g, "")
+
+
+def tip(clave):
+    """Botón «?» con la explicación en simple de un término del glosario."""
+    nombre, texto = GLOSARIO[clave]
+    return Markup('<button type="button" class="tip" aria-label="Qué significa {n}"><span class="tip-i" aria-hidden="true">?</span>'
+                  '<span class="tip-t" role="tooltip"><b>{n}</b>{t}</span></button>').format(n=nombre, t=texto)
+
+
+T.env.globals.update(tip=tip, G=GLOSARIO, CATS_UI=CATEGORIAS_UI, GRUPOS=GRUPO_NOMBRE)
+NAV = [("Ver", [("/", "Inicio"), ("/resultados", "Mes a mes"), ("/productos", "Productos"), ("/impuestos", "IVA")]),
+       ("Actualizar", [("/cargar", "Subir archivos"), ("/compras", "Facturas y proveedores"),
+                       ("/insumos", "Insumos y precios"), ("/costos-fijos", "Gastos fijos")]),
+       ("", [("/ayuda", "Ayuda")])]
 _con = None
 _fails = {}
 
@@ -78,8 +100,9 @@ async def form(request: Request):
 
 
 def page(request, name, **ctx):
-    return T.TemplateResponse(request, name, {"user": request.session.get("user"),
-                                              "csrf": request.session.get("csrf"), "cats": F.CATEGORIAS, **ctx})
+    u = request.session.get("user")
+    return T.TemplateResponse(request, name, {"user": u, "csrf": request.session.get("csrf"), "cats": F.CATEGORIAS,
+                                              "nav": NAV, "fresc": I.frescura(db()) if u else None, **ctx})
 
 
 def month_add(p, n):
@@ -97,15 +120,6 @@ def rango(request, con, meses=6):
         lista.append(p)
         p = month_add(p, 1)
     return desde, hasta, lista, ps
-
-
-def semaforo(p):
-    pc = p["pct"]
-    s = lambda v, verde, amarillo, alto_es_bueno: (
-        "ok" if (v >= verde if alto_es_bueno else v <= verde)
-        else "warn" if (v >= amarillo if alto_es_bueno else v <= amarillo) else "bad")
-    return {"margen_bruto": s(pc["margen_bruto"], 65, 60, True), "costo_venta": s(pc["costo_venta"], 35, 40, False),
-            "prime_cost": s(pc["prime_cost"], 60, 65, False), "resultado": s(pc["resultado"], 10, 5, True)}
 
 
 @app.get("/login", response_class=HTMLResponse)
@@ -145,15 +159,33 @@ def resumen(request: Request):
     hoy = date.today().strftime("%Y-%m")
     cerrados = [x for x in ps if x < hoy] or ps
     per = request.query_params.get("periodo") or cerrados[-1]
+    if per not in ps:
+        per = cerrados[-1]
+    parcial = per >= hoy
     p = F.pnl_mes(con, per, cfg)
+    ctx = I.contexto(con, cfg, per, ps)
+    v = I.veredicto(p, parcial)
     serie = [F.pnl_mes(con, x, cfg) for x in ps[-12:]]
-    chart = {"labels": [T.env.filters["mes"](x["periodo"]) for x in serie],
+    horas = F.ventas_por_hora(con, per)
+    chart = {"labels": [f"{MESES[int(x['periodo'][5:7]) - 1]} {x['periodo'][2:4]}" for x in serie],
              "ventas": [x["ventas"]["neto"] for x in serie],
-             "resultado": [x["resultado_operacional"] if x["tiene_compras"] else None for x in serie],
-             "horas": F.ventas_por_hora(con, per)}
+             "ganancia": [x["resultado_operacional"] if x["tiene_compras"] and x["periodo"] < hoy else None for x in serie],
+             "horas": horas}
+    pico = max(horas, key=lambda h: h["bruto"])["hora"] if horas else None
+    dia = round(p["ventas"]["bruto"] / p["ventas"]["dias_abiertos"]) if p["ventas"]["dias_abiertos"] else 0
+    eq = p["equilibrio"]["venta_bruta_dia"]
+    kpi = {"var_venta": I.variacion(p["ventas"]["neto"], ctx["prev"]["ventas"]["neto"]) if ctx["prev"] else None,
+           "insumos": I.por_mil(p, p["costo_venta"]), "ins_sue": I.por_mil(p, p["costo_venta"] + p["personal"]),
+           "e_insumos": I.estado(I.por_mil(p, p["costo_venta"]), 350, 400, False),
+           "e_ins_sue": I.estado(I.por_mil(p, p["costo_venta"] + p["personal"]), 600, 650, False),
+           "dia": dia, "e_dia": ("ok" if dia >= eq else "bad") if eq else None,
+           "dif_prom": p["resultado_operacional"] - ctx["prom_ganancia"] if ctx["prom_ganancia"] is not None else None}
     top = F.margen_productos(con, per, per, cfg)
-    return page(request, "resumen.html", p=p, per=per, ps=ps, sem=semaforo(p), chart=json.dumps(chart),
-                medios=F.medios_pago(con, per), top=top, parcial=per >= hoy)
+    i = ps.index(per)
+    return page(request, "resumen.html", p=p, per=per, ps=ps, v=v, des=I.desglose(p) if v["con_resultado"] else [],
+                ctx=ctx, kpi=kpi, pend=I.pendientes(con, cfg, ps), chart=json.dumps(chart), pico=pico,
+                medios=F.medios_pago(con, per), top=top, parcial=parcial,
+                ant=ps[i - 1] if i > 0 else None, sig=ps[i + 1] if i < len(ps) - 1 else None)
 
 
 @app.get("/resultados", response_class=HTMLResponse)
@@ -163,10 +195,20 @@ def resultados(request: Request):
     cfg = F.load_cfg(con)
     desde, hasta, lista, ps = rango(request, con)
     cols = [F.pnl_mes(con, x, cfg) for x in lista]
-    grupos = [("costo_venta", "Costo de venta"), ("personal", "Personal"),
-              ("gasto_operacional", "Gastos operacionales"), ("sin_clasificar", "Sin clasificar")]
-    cats = {g: sorted({c for p in cols for c in p["lineas"].get(g, {})}) for g, _ in grupos}
-    return page(request, "resultados.html", cols=cols, grupos=grupos, lineas=cats, desde=desde, hasta=hasta, ps=ps)
+    grupos = [("costo_venta", "Insumos y productos", "insumos"), ("personal", "Sueldos", "sueldos"),
+              ("gasto_operacional", "Gastos del local", "gastos_local"),
+              ("sin_clasificar", "Facturas sin categoría", "sin_categoria")]
+    cats = {g: sorted({c for p in cols for c in p["lineas"].get(g, {})}) for g, _, _ in grupos}
+    hoy = date.today().strftime("%Y-%m")
+    for p in cols:
+        p["completo"] = p["tiene_compras"] and p["periodo"] < hoy
+    comp = [p for p in cols if p["completo"]]
+    n = len(comp) or 1
+    prom = {k: round(sum(p[k] for p in comp) / n) for k in
+            ("costo_venta", "personal", "gasto_operacional", "sin_clasificar", "margen_bruto", "resultado_operacional")}
+    prom.update(ventas=round(sum(p["ventas"]["neto"] for p in comp) / n), n=len(comp))
+    return page(request, "resultados.html", cols=cols, grupos=grupos, lineas=cats, desde=desde, hasta=hasta, ps=ps,
+                prom=prom)
 
 
 @app.get("/productos", response_class=HTMLResponse)
@@ -175,7 +217,13 @@ def productos(request: Request):
     con = db()
     desde, hasta, _, ps = rango(request, con, 3)
     r = F.margen_productos(con, desde, hasta, F.load_cfg(con))
-    return page(request, "productos.html", r=r, desde=desde, hasta=hasta, ps=ps)
+    puntos = [{"x": d["cantidad"], "y": d["margen_unit"], "n": d["producto"], "c": d["contribucion"]}
+              for d in r["productos"] if d["costo"] is not None]
+    conteo = {g: sum(1 for d in r["productos"] if d["clase"] == g) for g in GRUPO_NOMBRE}
+    conteo["sin"] = sum(1 for d in r["productos"] if d["costo"] is None)
+    return page(request, "productos.html", r=r, desde=desde, hasta=hasta, ps=ps, conteo=conteo,
+                grupo=request.query_params.get("grupo", ""),
+                chart=json.dumps({"puntos": puntos, "umbral": r["umbral"]}))
 
 
 @app.post("/productos/costo")
@@ -203,8 +251,11 @@ def receta(request: Request, p: str):
     venta = con.execute("SELECT SUM(bruto) b, SUM(cantidad) q FROM venta_producto WHERE producto=? AND fecha >= date('now','-90 day')", (p,)).fetchone()
     iva = F.load_cfg(con)["empresa"]["iva"]
     precio = round(venta["b"] / venta["q"] / (1 + iva)) if venta["q"] else None
-    return page(request, "receta.html", producto=p, lineas=lineas, total=F.costo_receta(con, p), fijo=fijo,
-                precio=precio, insumos=[dict(r) for r in con.execute("SELECT * FROM insumo ORDER BY nombre")])
+    total = F.costo_receta(con, p)
+    costo = total if total is not None else (fijo["costo"] if fijo else None)
+    return page(request, "receta.html", producto=p, lineas=lineas, total=total, fijo=fijo, costo=costo, iva=iva,
+                precio=precio, precio_bruto=round(venta["b"] / venta["q"]) if venta["q"] else None,
+                vendidos=round(venta["q"] or 0), insumos=[dict(r) for r in con.execute("SELECT * FROM insumo ORDER BY nombre")])
 
 
 @app.post("/receta")
@@ -312,6 +363,12 @@ def impuestos(request: Request):
              "tiene_compras": bool(con.execute("SELECT 1 FROM compra WHERE periodo=? LIMIT 1", (x,)).fetchone())}
             for x in reversed(lista)]
     return page(request, "impuestos.html", rows=rows, ppm=cfg["empresa"]["ppm_tasa"] * 100)
+
+
+@app.get("/ayuda", response_class=HTMLResponse)
+def ayuda(request: Request):
+    user(request)
+    return page(request, "ayuda.html")
 
 
 @app.get("/cargar", response_class=HTMLResponse)

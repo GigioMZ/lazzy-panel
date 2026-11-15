@@ -1,14 +1,35 @@
-{% extends "base.html" %}{% block title %}{{producto}}{% endblock %}{% block main %}
-<h1>Receta · {{producto}}</h1><p><a href="/productos">← Productos</a></p>
-<div class="grid"><div class="kpi"><small>Costo por receta</small><strong>{{total|clp}}</strong></div>
-<div class="kpi"><small>Precio neto (últimos 90 días)</small><strong>{{precio|clp}}</strong></div>
-<div class="kpi"><small>Margen</small><strong>{% if total and precio %}{{(100*(1-total/precio))|round(1)}}%{% else %}—{% endif %}</strong></div></div>
-{% if fijo and lineas %}<div class="note">Este producto tenía un costo fijo de {{fijo.costo|clp}}; al tener receta se usa el costo de la receta.</div>{% endif %}
-<div class="card"><table><tr><th>Insumo</th><th>Cantidad</th><th>Costo</th><th></th></tr>
-{% for l in lineas %}<tr><td>{{l.nombre}}</td><td><form class="inline" method="post"><input type="hidden" name="csrf" value="{{csrf}}"><input type="hidden" name="producto" value="{{producto}}"><input type="hidden" name="insumo_id" value="{{l.id}}">
-<input class="n" name="cantidad" value="{{'%g'|format(l.cantidad)}}"> {{l.unidad}} <button class="sec">OK</button></form></td><td>{{l.costo|round|int|clp}}</td>
-<td><form class="inline" method="post"><input type="hidden" name="csrf" value="{{csrf}}"><input type="hidden" name="producto" value="{{producto}}"><input type="hidden" name="insumo_id" value="{{l.id}}"><button class="sec" name="accion" value="quitar">Quitar</button></form></td></tr>{% endfor %}
-{% if not lineas %}<tr><td colspan="4" class="l">Sin receta. Agrega insumos abajo{% if fijo %} (hoy usa costo fijo de {{fijo.costo|clp}}){% endif %}.</td></tr>{% endif %}</table>
-<form class="inline" method="post" style="margin-top:12px"><input type="hidden" name="csrf" value="{{csrf}}"><input type="hidden" name="producto" value="{{producto}}">
-<select name="insumo_id">{% for i in insumos %}<option value="{{i.id}}">{{i.nombre}} ({{i.unidad}})</option>{% endfor %}</select><input class="n" name="cantidad" placeholder="cantidad" required><button>Agregar insumo</button></form>
-<p><em style="color:var(--mut)">¿Falta un insumo? Créalo en <a href="/insumos">Insumos</a>.</em></p></div>{% endblock %}
+{% extends "base.html" %}{% from "_m.html" import th %}{% block title %}{{producto}}{% endblock %}{% block main %}
+<p><a href="/productos">‹ Todos los productos</a></p>
+<div class="cab"><h1>{{producto}}</h1></div>
+{% set deja = (precio - costo) if precio and costo is not none else none %}
+<div class="kpis">
+<div class="kpi"><div class="t">Precio de carta {{ tip('precio_carta') }}</div><div class="n">{{precio_bruto|clp}}</div><div class="d">{% if precio %}{{precio|clp}} sin IVA, {{vendidos|num}} vendidos en 90 días{% else %}sin ventas en los últimos 90 días{% endif %}</div></div>
+<div class="kpi"><div class="t">Te cuesta {{ tip('costo_unidad') }}</div><div class="n">{{costo|clp}}</div><div class="d">{{ 'calculado con la receta' if lineas else ('costo puesto a mano' if fijo else 'todavía sin costo') }}</div></div>
+<div class="kpi"><div class="t">Te deja {{ tip('deja_unidad') }}</div><div class="n">{{deja|clp}}</div><div class="d">por cada unidad vendida</div></div>
+<div class="kpi"><div class="t">Margen {{ tip('margen') }}</div><div class="n">{{ (100*(1-costo/precio))|pct(0) if deja is not none else '—' }}</div><div class="d">{% if deja is not none %}{% set m = 100*(1-costo/precio) %}<span class="st {{ 'ok' if m>=60 else 'warn' if m>=35 else 'bad' }}">{{ 'Bueno' if m>=60 else 'Regular' if m>=35 else 'Bajo' }}</span>{% endif %}</div></div>
+</div>
+
+{% if costo is not none %}<section class="bloque"><h2>Probar otro precio</h2>
+<p class="sub">Escribe un precio de carta (con IVA) y mira cuánto te dejaría. No cambia nada: el precio real se cambia en FUDO.</p>
+<div class="fila" style="display:flex;gap:14px;align-items:center;flex-wrap:wrap"><label>Precio con IVA <input class="n" id="sim" inputmode="numeric" value="{{precio_bruto or ''}}"></label>
+<span id="simr" aria-live="polite" style="font-weight:600"></span></div></section>{% endif %}
+
+<section class="bloque"><h2>Receta {{ tip('receta') }}</h2>
+<p class="sub">{% if lineas %}El costo sale de multiplicar cada cantidad por el precio del insumo. Si cambia el precio de un insumo, este costo se actualiza solo.{% else %}Este producto no tiene receta. Si se prepara en el local, agrega aquí sus insumos. Si se compra hecho, usa el costo fijo de más abajo.{% endif %}</p>
+{% if lineas %}<div class="tabla" style="max-width:720px"><table><tr><th>Insumo</th><th class="l">Cantidad por unidad</th><th>Costo</th><th></th></tr>
+{% for l in lineas %}<tr><td>{{l.nombre}}</td><td class="l"><form class="fila" method="post"><input type="hidden" name="csrf" value="{{csrf}}"><input type="hidden" name="producto" value="{{producto}}"><input type="hidden" name="insumo_id" value="{{l.id}}">
+<input class="n" name="cantidad" value="{{'%g'|format(l.cantidad)}}" inputmode="decimal" aria-label="Cantidad de {{l.nombre}}"> {{l.unidad}} <button class="btn sec">Guardar</button></form></td><td>{{l.costo|round|int|clp}}</td>
+<td><form class="fila" method="post"><input type="hidden" name="csrf" value="{{csrf}}"><input type="hidden" name="producto" value="{{producto}}"><input type="hidden" name="insumo_id" value="{{l.id}}"><button class="btn sec" name="accion" value="quitar">Quitar</button></form></td></tr>{% endfor %}
+<tr class="fuerte"><td>Total</td><td></td><td>{{total|clp}}</td><td></td></tr></table></div>{% endif %}
+<form class="fila" method="post" style="margin-top:14px"><input type="hidden" name="csrf" value="{{csrf}}"><input type="hidden" name="producto" value="{{producto}}">
+<label>Agregar insumo <select name="insumo_id">{% for i in insumos %}<option value="{{i.id}}">{{i.nombre}} (en {{i.unidad}})</option>{% endfor %}</select></label>
+<label>cantidad <input class="n" name="cantidad" inputmode="decimal" required></label><button class="btn">Agregar a la receta</button></form>
+<p class="nota">¿No está el insumo en la lista? Créalo primero en <a href="/insumos">Insumos y precios</a>.</p></section>
+
+{% if not lineas %}<section class="bloque"><h2>Costo fijo</h2><p class="sub">Para productos que compras hechos: lo que te cobra el proveedor por unidad, sin IVA.</p>
+<form class="fila" method="post" action="/productos/costo"><input type="hidden" name="csrf" value="{{csrf}}"><input type="hidden" name="producto" value="{{producto}}"><input type="hidden" name="volver" value="/receta?p={{producto|urlencode}}">
+<label>Costo por unidad sin IVA <input class="n" name="costo" value="{{fijo.costo if fijo else ''}}" inputmode="numeric"></label><button class="btn">Guardar costo</button></form></section>{% endif %}{% endblock %}
+{% block js %}{% if costo is not none %}<script>(function(){var c={{costo}},iva={{iva}},i=document.getElementById('sim'),o=document.getElementById('simr');
+function f(){var b=parseInt(String(i.value).replace(/\D/g,''),10);if(!b){o.textContent='';return}var n=b/(1+iva),d=n-c,m=100*d/n;
+o.textContent='Te dejaría '+LZ.clp(d)+' por unidad, un margen de '+Math.round(m)+'%.';}
+i.addEventListener('input',f);f();})();</script>{% endif %}{% endblock %}

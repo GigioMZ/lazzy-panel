@@ -1,5 +1,7 @@
-{% extends "base.html" %}{% block title %}Impuestos{% endblock %}{% block main %}
-<h1>IVA y PPM por mes</h1><div class="note">Estimación: el débito se calcula desde las ventas de FUDO y el crédito desde el registro de compras del SII. El monto oficial es el del F29 que declara la contadora. PPM configurado: {{'%g'|format(ppm)}}% (<a href="/costos-fijos">cambiar</a>).</div>
-<div class="card"><table><tr><th>Mes</th><th>IVA débito (ventas)</th><th>IVA crédito (compras)</th><th>IVA a pagar</th><th>PPM</th><th>F29 estimado</th></tr>
-{% for r in rows %}<tr><td>{{r.periodo|mes}}{{' *' if not r.tiene_compras}}</td><td>{{r.debito|clp}}</td><td>{{r.credito|clp}}</td><td>{{r.iva_a_pagar|clp}}</td><td>{{r.ppm|clp}}</td><td><b>{{r.f29_estimado|clp}}</b></td></tr>{% endfor %}</table>
-<p><em style="color:var(--mut)">* sin registro de compras cargado: el crédito está en cero y el IVA a pagar sobreestimado.</em></p></div>{% endblock %}
+{% extends "base.html" %}{% from "_m.html" import th %}{% block title %}IVA{% endblock %}{% block main %}
+<div class="cab"><h1>IVA de cada mes</h1></div>
+<p class="sub">Cuánto IVA hay que pagarle al SII cada mes: el que cobraste en tus ventas menos el que ya pagaste en tus compras con factura. Sirve para apartar esa plata y que el pago no te pille de sorpresa.</p>
+<p class="aviso">Es una estimación hecha con las ventas de FUDO y las compras del SII. El monto oficial es el del formulario 29 que presenta la contadora. {{ tip('f29') }}</p>
+<div class="tabla bloque"><table><tr><th>Mes</th>{{ th('IVA que cobraste','iva_cobrado') }}{{ th('IVA de tus compras','iva_compras') }}{{ th('IVA a pagar','iva_pagar') }}{{ th('PPM','ppm') }}<th>Total a pagar al SII</th></tr>
+{% for r in rows %}<tr><td>{{r.periodo|mesl|capitalize}}</td><td>{{r.debito|clp}}</td>{% if r.tiene_compras %}<td>{{r.credito|clp}}</td><td>{{r.iva_a_pagar|clp}}</td><td>{{r.ppm|clp}}</td><td><b>{{r.f29_estimado|clp}}</b></td>{% else %}<td colspan="4" class="l">Falta el archivo de compras del SII de este mes</td>{% endif %}</tr>{% endfor %}</table></div>
+<p class="nota">{% if ppm %}PPM calculado con una tasa de {{'%g'|format(ppm)|replace('.',',')}}%.{% else %}El PPM está en $0 porque todavía no pones la tasa.{% endif %} <a href="/costos-fijos">Cambiar tasa de PPM</a></p>{% endblock %}

@@ -1,12 +1,48 @@
-{% extends "base.html" %}{% block title %}Productos{% endblock %}{% block main %}
-<div class="bar"><h1 style="margin:0">Margen por producto</h1><form class="inline">Desde <select name="desde">{% for x in ps %}<option {{'selected' if x==desde}} value="{{x}}">{{x|mes}}</option>{% endfor %}</select>
-hasta <select name="hasta">{% for x in ps %}<option {{'selected' if x==hasta}} value="{{x}}">{{x|mes}}</option>{% endfor %}</select><button>Ver</button></form>
-<span>Costeado: <b>{{r.cobertura_pct}}%</b> de la venta</span></div>
-<div class="note"><b>Estrella</b>: se vende mucho y deja buen margen, protégelo. <b>Caballo</b>: se vende mucho pero deja poco, sube precio o baja costo. <b>Puzzle</b>: buen margen pero se vende poco, promuévelo. <b>Perro</b>: ni lo uno ni lo otro, evalúa sacarlo.</div>
-<div class="card"><table><tr><th>Producto</th><th class="l">Categoría</th><th>Cant.</th><th>Venta neta</th><th>Precio neto</th><th>Costo neto</th><th>Margen</th><th>Aporte</th><th></th><th class="l">Costo</th></tr>
-{% for d in r.productos %}<tr><td>{{d.producto}}</td><td class="l">{{d.categoria}}</td><td>{{d.cantidad|num}}</td><td>{{d.neto|clp}}</td><td>{{d.precio_neto|clp}}</td>
-<td>{{d.costo|clp}}</td><td class="{{'neg' if d.margen_pct is not none and d.margen_pct<30}}">{{d.margen_pct~'%' if d.margen_pct is not none else '—'}}</td><td>{{d.contribucion|clp}}</td>
-<td>{% if d.clase %}<span class="tag {{d.clase}}">{{d.clase}}</span>{% else %}<span class="tag">sin costo</span>{% endif %}</td>
-<td class="l">{% if d.fuente=="receta" %}<a href="/receta?p={{d.producto|urlencode}}">receta</a>{% else %}
-<form class="inline" method="post" action="/productos/costo"><input type="hidden" name="csrf" value="{{csrf}}"><input type="hidden" name="producto" value="{{d.producto}}"><input type="hidden" name="volver" value="{{request.url.path}}?{{request.url.query}}">
-<input class="n" name="costo" value="{{d.costo or ''}}" placeholder="costo" inputmode="numeric"><button class="sec">OK</button></form> <a href="/receta?p={{d.producto|urlencode}}">receta</a>{% endif %}</td></tr>{% endfor %}</table></div>{% endblock %}
+{% extends "base.html" %}{% from "_m.html" import rango_meses, th %}{% block title %}Productos{% endblock %}{% block main %}
+<div class="cab"><h1>Productos</h1>{{ rango_meses(ps, desde, hasta) }}</div>
+<p class="sub">Cuánto se vende y cuánto deja cada producto. Tienen costo cargado los productos que suman el {{r.cobertura_pct|pct(0)}} de tu venta. {{ tip('cobertura') }}</p>
+
+<div class="leyenda">{% for g in ['estrella','caballo','puzzle','perro'] %}<div><span class="gr {{g}}">{{g|grupo}}</span><p>{{ G['g_'~g][1] }}</p></div>{% endfor %}</div>
+
+{% if r.umbral %}<section class="bloque"><h2>Cuánto se vende y cuánto deja cada uno</h2>
+<p class="sub">Cada punto es un producto. Más a la derecha: se vende más. Más arriba: deja más plata por unidad. Pasa el mouse o toca un punto para ver cuál es.</p>
+<div class="grafico alto"><canvas id="cp" role="img" aria-label="Productos según unidades vendidas y plata que dejan por unidad"></canvas></div></section>{% endif %}
+
+<section class="bloque"><h2>Todos los productos</h2>
+<div class="filtros" role="group" aria-label="Filtrar productos">
+<button class="chip" data-g="" aria-pressed="true">Todos <b>{{r.productos|length}}</b></button>
+{% for g in ['estrella','caballo','puzzle','perro'] %}<button class="chip" data-g="{{g}}" aria-pressed="false">{{g|grupo}} <b>{{conteo[g]}}</b></button>{% endfor %}
+<button class="chip" data-g="sin" aria-pressed="false">Falta el costo <b>{{conteo.sin}}</b></button>
+<input id="busca" type="search" placeholder="Buscar producto" aria-label="Buscar producto"></div>
+<div class="tabla"><table id="tp"><tr><th>Producto</th><th>Vendidos</th>{{ th('Precio carta','precio_carta') }}{{ th('Te cuesta','costo_unidad') }}{{ th('Te deja','deja_unidad') }}{{ th('Margen','margen') }}{{ th('Ganancia total','aporte') }}{{ th('Grupo','grupo','l') }}</tr>
+{% for d in r.productos %}<tr data-g="{{d.clase or 'sin'}}" data-n="{{d.producto|lower}}" class="{{'falta' if d.costo is none}}"><td><a href="/receta?p={{d.producto|urlencode}}">{{d.producto}}</a></td><td>{{d.cantidad|num}}</td><td>{{d.precio_bruto|clp}}</td>
+<td>{% if d.fuente=="receta" %}{{d.costo|clp}} <a href="/receta?p={{d.producto|urlencode}}" title="El costo sale de la receta">receta</a>{% else %}
+<form class="fila junto" method="post" action="/productos/costo" style="justify-content:flex-end"><input type="hidden" name="csrf" value="{{csrf}}"><input type="hidden" name="producto" value="{{d.producto}}"><input type="hidden" name="volver" value="{{request.url.path}}?{{request.url.query}}">
+<input class="n chico" name="costo" value="{{d.costo or ''}}" placeholder="sin IVA" inputmode="numeric" aria-label="Costo sin IVA de {{d.producto}}"><button class="btn sec mini">Guardar</button></form>{% endif %}</td>
+<td>{{d.margen_unit|clp}}</td><td class="{{'malo' if d.margen_pct is not none and d.margen_pct<30}}">{{d.margen_pct|pct(0)}}</td><td>{{d.contribucion|clp}}</td>
+<td class="l">{% if d.clase %}<span class="gr {{d.clase}}">{{d.clase|grupo}}</span>{% else %}<span class="gr">Falta el costo</span>{% endif %}</td></tr>{% endfor %}</table></div>
+<p class="nota">En «Te cuesta» puedes escribir el costo y guardarlo: si el producto se compra hecho (pastelería, jugos), anota lo que te cobra el proveedor por unidad, sin IVA. Si se prepara en el local, haz clic en su nombre y arma su receta. Los precios de venta se toman de FUDO.</p></section>{% endblock %}
+{% block js %}<script src="/static/chart.umd.js"></script><script>
+// filtros de la tabla
+(function(){var g={{grupo|tojson}},q='';var chips=document.querySelectorAll('.chip'),filas=document.querySelectorAll('#tp tr[data-g]');
+function aplicar(){chips.forEach(c=>c.setAttribute('aria-pressed',c.dataset.g===g));filas.forEach(f=>{f.hidden=!((!g||f.dataset.g===g)&&(!q||f.dataset.n.includes(q)))});}
+chips.forEach(c=>c.addEventListener('click',()=>{g=c.dataset.g;aplicar()}));document.getElementById('busca').addEventListener('input',e=>{q=e.target.value.toLowerCase();aplicar()});aplicar();
+document.querySelectorAll('form.junto input[name=costo]').forEach(i=>i.addEventListener('input',()=>i.form.classList.add('cambio')));})();
+// mapa de productos
+(function(){var D={{chart|safe}};if(!D.umbral||!window.Chart)return;LZ.base();
+var top=D.puntos.slice().sort((a,b)=>b.c-a.c).slice(0,7).map(p=>p.n);
+var cuadrantes={id:'cuadrantes',beforeDatasetsDraw(ch){var c=ch.ctx,a=ch.chartArea,x=ch.scales.x.getPixelForValue(D.umbral.cantidad),y=ch.scales.y.getPixelForValue(D.umbral.margen);
+ c.save();c.strokeStyle=LZ.tinta2;c.lineWidth=1;c.beginPath();c.moveTo(x,a.top);c.lineTo(x,a.bottom);c.moveTo(a.left,y);c.lineTo(a.right,y);c.stroke();
+ c.fillStyle=LZ.tinta2;c.font='600 13px "DM Sans", sans-serif';c.textBaseline='top';
+ c.textAlign='right';c.fillText('Estrella',a.right-8,a.top+6);c.textAlign='left';c.fillText('Se vende poco',a.left+8,a.top+6);
+ c.textBaseline='bottom';c.fillText('Débil',a.left+8,a.bottom-6);c.textAlign='right';c.fillText('Deja poco',a.right-8,a.bottom-6);c.restore();},
+ afterDatasetsDraw(ch){var c=ch.ctx,m=ch.getDatasetMeta(0),a=ch.chartArea,puestas=[];c.save();c.fillStyle=LZ.tinta;c.font='500 12.5px "DM Sans", sans-serif';c.textBaseline='middle';
+ function choca(r){return puestas.some(q=>r.x<q.x+q.w&&q.x<r.x+r.w&&r.y<q.y+q.h&&q.y<r.y+r.h)}
+ m.data.forEach((pt)=>puestas.push({x:pt.x-7,y:pt.y-7,w:14,h:14}));
+ top.forEach(n=>{var i=D.puntos.findIndex(p=>p.n===n),pt=m.data[i],w=c.measureText(n).width,ops=[[9,-10,'left'],[9,11,'left'],[-9,-10,'right'],[-9,11,'right'],[0,-17,'center'],[0,18,'center']];
+  for(var o of ops){var x0=o[2]==='left'?pt.x+o[0]:o[2]==='right'?pt.x+o[0]-w:pt.x-w/2,r={x:x0,y:pt.y+o[1]-8,w:w,h:16};
+   if(r.x<a.left||r.x+r.w>a.right||r.y<a.top||r.y+r.h>a.bottom||choca(r))continue;c.textAlign='left';c.fillText(n,r.x,pt.y+o[1]);puestas.push(r);break;}});c.restore();}};
+new Chart(document.getElementById('cp'),{type:'scatter',data:{datasets:[{label:'Productos',data:D.puntos,backgroundColor:LZ.azul,borderColor:LZ.papel,borderWidth:2,pointRadius:6,pointHoverRadius:9}]},
+ options:{plugins:{legend:{display:false},tooltip:{callbacks:{title:t=>t[0].raw.n,label:c=>['Vendidos: '+Math.round(c.raw.x).toLocaleString('es-CL'),'Te deja por unidad: '+LZ.clp(c.raw.y),'Ganancia total: '+LZ.clp(c.raw.c)]}}},
+ scales:{x:{title:{display:true,text:'Unidades vendidas en el período'},beginAtZero:true},y:{title:{display:true,text:'Te deja por unidad (sin IVA)'},beginAtZero:true,ticks:{callback:v=>LZ.clp(v)}}}},plugins:[cuadrantes]});})();
+</script>{% endblock %}

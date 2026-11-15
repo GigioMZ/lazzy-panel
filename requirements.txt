@@ -7,3 +7,4 @@ itsdangerous>=2.1
 pytest>=8
 httpx>=0.27
 tomli>=2.0; python_version < "3.11"
+markupsafe>=2.1

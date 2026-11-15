@@ -1,0 +1,6 @@
+{% macro cat_select(sel, auto=false, vacio=true) %}<select name="categoria" {% if auto %}onchange="this.form.submit()"{% endif %} aria-label="Categoría">
+{% if vacio %}<option value="">Sin categoría</option>{% endif %}
+{% for grupo, items in CATS_UI %}<optgroup label="{{grupo}}">{% for k, n in items %}<option value="{{k}}" {{'selected' if k==sel}}>{{n}}</option>{% endfor %}</optgroup>{% endfor %}</select>{% endmacro %}
+{% macro th(texto, clave=none, cls="") %}<th class="{{cls}}"><span class="th-in">{{texto}}{% if clave %}{{ tip(clave) }}{% endif %}</span></th>{% endmacro %}
+{% macro rango_meses(ps, desde, hasta) %}<form class="fila"><label>Desde <select name="desde">{% for x in ps %}<option {{'selected' if x==desde}} value="{{x}}">{{x|mes}}</option>{% endfor %}</select></label>
+<label>hasta <select name="hasta">{% for x in ps %}<option {{'selected' if x==hasta}} value="{{x}}">{{x|mes}}</option>{% endfor %}</select></label><button class="btn sec">Ver</button></form>{% endmacro %}
