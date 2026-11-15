@@ -17,7 +17,7 @@ compras = [r[0] for r in con.execute("SELECT DISTINCT periodo FROM compra ORDER 
 print("meses con ventas:", ps[0], "a", ps[-1], "| compras SII:", ", ".join(compras))
 print("usuarios:", ", ".join(r[0] for r in con.execute("SELECT nombre FROM usuario")))
 mal = 0
-for u in ["/", "/resultados", "/productos", "/insumos", "/compras", "/costos-fijos", "/impuestos", "/cargar", "/ayuda",
+for u in ["/", "/decisiones", "/resultados", "/productos", "/insumos", "/compras", "/costos-fijos", "/impuestos", "/cargar", "/ayuda",
           "/receta?p=Latte"] + [f"/?periodo={p}" for p in ps]:
     r = c.get(u)
     ok = r.status_code == 200
