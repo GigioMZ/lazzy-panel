@@ -303,7 +303,15 @@ def toca_resumen(con, ahora):
 
 
 def main():
+    from . import claves
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    # Las claves se cargan desde el panel. Sin ellas el bot espera; si cambian, se reinicia solo (systemd lo levanta).
+    archivo = claves.ruta()
+    while not claves.leer().get("TELEGRAM_TOKEN"):
+        log.info("esperando claves en %s (se cargan en el panel, página Bot de Telegram)", archivo)
+        time.sleep(15)
+    os.environ.update({k: v for k, v in claves.leer().items() if k in ("TELEGRAM_TOKEN", "ANTHROPIC_API_KEY")})
+    firma = archivo.stat().st_mtime
     token = os.environ["TELEGRAM_TOKEN"]
     db = os.environ.get("LAZZY_DB", "data/lazzy.db")
     con = connect(db)
@@ -316,6 +324,9 @@ def main():
     log.info("bot iniciado")
     while True:
         try:
+            if archivo.stat().st_mtime != firma:
+                log.info("cambiaron las claves; reiniciando")
+                raise SystemExit(0)
             ahora = datetime.now(ZONA)
             if toca_resumen(con, ahora):
                 texto = resumen_semana(con)
@@ -337,6 +348,8 @@ def main():
                         except Exception:
                             pass
             espera = 1
+        except SystemExit:
+            raise
         except Exception:
             log.exception("error de conexión; reintento en %ss", espera)
             time.sleep(espera)

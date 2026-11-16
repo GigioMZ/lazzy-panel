@@ -1,6 +1,14 @@
 {% extends "base.html" %}{% block title %}Bot de Telegram{% endblock %}{% block main %}
 <div class="cab"><h1>Bot de Telegram</h1></div>
 <p class="sub">Por el bot entran las facturas, las cuentas y los archivos de FUDO y del SII, sin abrir el panel. Lo que se guarda ahí aparece aquí al instante.</p>
+{% for k,m in msgs %}<p class="aviso {{k}}">{{m}}</p>{% endfor %}
+<section class="bloque"><h2>Claves del bot</h2>
+<p class="sub">{% if claves.telegram and claves.anthropic %}<span class="st ok">Configurado</span> El bot es <b>@{{claves.nombre}}</b>. Solo pega una clave aquí si necesitas cambiarla.{% else %}Pega el token que te dio @BotFather y la clave de la API de Anthropic. Se prueban antes de guardarse y quedan solo en el servidor: el panel no las vuelve a mostrar.{% endif %}</p>
+<form class="fila" method="post" autocomplete="off"><input type="hidden" name="csrf" value="{{csrf}}"><input type="hidden" name="accion" value="claves">
+<label>Token de Telegram <input type="password" name="token" style="width:min(300px,70vw)" placeholder="{{ 'guardado' if claves.telegram else '123456:ABC…' }}"></label>
+<label>Clave de Anthropic <input type="password" name="clave" style="width:min(300px,70vw)" placeholder="{{ 'guardada' if claves.anthropic else 'sk-ant-…' }}"></label>
+<button class="btn">Probar y guardar</button></form></section>
+
 <section class="bloque"><h2>Vincular tu Telegram</h2>
 {% if codigo %}<p class="aviso ok">Abre el bot{% if bot_nombre %} <a href="https://t.me/{{bot_nombre}}" target="_blank" rel="noopener">@{{bot_nombre}}</a>{% endif %} y mándale este mensaje: <b style="font-size:20px;letter-spacing:.08em">/vincular {{codigo}}</b><br>El código sirve una sola vez y vence en 30 minutos.</p>
 {% else %}<p class="sub">Cada persona lo hace una vez, desde su propio usuario del panel. Solo los Telegram vinculados pueden usar el bot.</p>{% endif %}

@@ -147,3 +147,23 @@ def test_resumen_semanal():
     t = B.resumen_semana(con, hoy=date(2026, 11, 16))
     assert "semana del 9/11 al 15/11" in t and "Vendiste $300.000" in t and "+100% vs la semana anterior" in t
     assert B.toca_resumen(con, datetime(2026, 11, 16, 9, 5)) and not B.toca_resumen(con, datetime(2026, 11, 17, 9, 5))
+
+
+def test_claves_en_archivo_privado(tmp_path, monkeypatch):
+    import os
+    import stat
+    from lazzy import claves
+    monkeypatch.setenv("LAZZY_BOT_ENV", str(tmp_path / "bot.env"))
+    monkeypatch.setattr(claves, "probar_telegram", lambda t: "lazzy_bot")
+    monkeypatch.setattr(claves, "probar_anthropic", lambda c: None)
+    assert claves.estado() == {"telegram": False, "anthropic": False, "nombre": ""}
+    claves.guardar("123:abc", None)
+    claves.guardar(None, "sk-ant-x")
+    assert claves.leer() == {"BOT_NOMBRE": "lazzy_bot", "TELEGRAM_TOKEN": "123:abc", "ANTHROPIC_API_KEY": "sk-ant-x"}
+    assert stat.S_IMODE(os.stat(tmp_path / "bot.env").st_mode) == 0o600
+    def mala(t):
+        raise ValueError("El token de Telegram no funciona.")
+    monkeypatch.setattr(claves, "probar_telegram", mala)
+    with pytest.raises(ValueError):
+        claves.guardar("malo", None)
+    assert claves.leer()["TELEGRAM_TOKEN"] == "123:abc"

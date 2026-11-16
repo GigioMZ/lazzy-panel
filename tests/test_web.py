@@ -60,6 +60,20 @@ def test_paginas_y_edicion(tmp_path):
     assert load_cfg(con)["costo_producto"]["Torta"] == {"costo": 1500, "fuente": "manual"}
 
 
+def test_claves_desde_el_panel(tmp_path, monkeypatch):
+    from lazzy import claves
+    c, con = client(tmp_path)
+    csrf = login(c)
+    monkeypatch.setenv("LAZZY_BOT_ENV", str(tmp_path / "bot.env"))
+    monkeypatch.setattr(claves, "probar_telegram", lambda t: "lazzy_bot")
+    monkeypatch.setattr(claves, "probar_anthropic", lambda k: None)
+    c.post("/bot", data={"csrf": csrf, "accion": "claves", "token": " 123:abc ", "clave": "sk-ant-x"})
+    t = c.get("/bot").text
+    assert "Claves guardadas y probadas" in t and "@lazzy_bot" in t and "123:abc" not in t and "sk-ant-x" not in t
+    c.post("/bot", data={"csrf": csrf, "accion": "codigo"})
+    assert "/vincular " in c.get("/bot").text
+
+
 def test_carga_archivo(tmp_path):
     c, con = client(tmp_path)
     csrf = login(c)

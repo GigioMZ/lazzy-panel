@@ -22,7 +22,7 @@ uvicorn lazzy.web:app --port 8765
 Servidor: `sudo sh deploy/install.sh panel.lazzycoffee.cl` (Ubuntu + Caddy + systemd; se actualiza solo desde GitHub cada 5 min).
 
 ## Bot de Telegram
-`sudo sh deploy/install_bot.sh` pide el token y la clave de Anthropic (modelo por defecto: `claude-haiku-5-5`, cambiable con `LAZZY_MODELO`).
+`sudo sh deploy/install_bot.sh` instala el servicio; el token y la clave de Anthropic se pegan en el panel (modelo por defecto: `claude-haiku-5-5`, cambiable con `LAZZY_MODELO`).
 Cada persona se vincula desde el panel, página «Bot de Telegram».
 
 ## Estado

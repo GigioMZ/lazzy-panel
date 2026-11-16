@@ -401,9 +401,11 @@ def bot_pagina(request: Request):
                       "WHERE fecha >= ?", (mes + "-01",)).fetchone()
     caps = [dict(r) | {"d": json.loads(r["datos"])} for r in con.execute(
         "SELECT * FROM captura ORDER BY id DESC LIMIT 25")]
+    from . import claves
+    est = claves.estado()
     return page(request, "bot.html", codigo=request.session.pop("codigo", None), uso=dict(uso),
                 chats=[dict(r) for r in con.execute("SELECT * FROM telegram_chat ORDER BY creado")], caps=caps,
-                bot_nombre=os.environ.get("LAZZY_BOT_NOMBRE", ""))
+                bot_nombre=est["nombre"], claves=est, msgs=request.session.pop("msgs", []))
 
 
 @app.post("/bot")
@@ -413,6 +415,18 @@ async def bot_post(request: Request):
     if f.get("accion") == "codigo":
         from .bot import nuevo_codigo
         request.session["codigo"] = nuevo_codigo(con, request.session["user"])
+    elif f.get("accion") == "claves":
+        from . import claves
+        token, clave = str(f.get("token", "")).strip(), str(f.get("clave", "")).strip()
+        try:
+            if not token and not clave:
+                raise ValueError("No pegaste ninguna clave.")
+            claves.guardar(token or None, clave or None)
+            request.session["msgs"] = [("ok", "Claves guardadas y probadas. El bot se conecta en menos de un minuto.")]
+        except (ValueError, OSError) as e:
+            request.session["msgs"] = [("bad", str(e))]
+        except Exception:
+            request.session["msgs"] = [("bad", "No pude comprobar las claves: el servidor no logró conectarse. Intenta de nuevo.")]
     elif f.get("accion") == "desvincular":
         con.execute("DELETE FROM telegram_chat WHERE chat_id=?", (int(f["chat_id"]),))
         con.commit()

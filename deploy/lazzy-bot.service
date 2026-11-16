@@ -6,7 +6,6 @@ Wants=network-online.target
 [Service]
 User=lazzy
 WorkingDirectory=/opt/lazzy-panel
-EnvironmentFile=/etc/lazzy/bot.env
 Environment=LAZZY_DB=/var/lib/lazzy/lazzy.db
 Environment=LAZZY_ARCHIVOS=/var/lib/lazzy/archivos
 ExecStart=/opt/lazzy-panel/.venv/bin/python -m lazzy.bot
