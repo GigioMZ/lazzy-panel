@@ -55,7 +55,7 @@ def veredicto(p, parcial):
 
 def desglose(p):
     """Filas de '¿en qué se fue cada $1.000 que vendiste?'. ancho = % de la barra."""
-    filas = [("insumos", "Insumos y productos", p["costo_venta"], f"lo sano: hasta ${META['insumos']}"),
+    filas = [("insumos", "Costo de lo vendido", p["costo_venta"], f"lo sano: hasta ${META['insumos']}"),
              ("sueldos", "Sueldos", p["personal"], ""),
              ("gastos_local", "Gastos del local", p["gasto_operacional"], "")]
     if p["sin_clasificar"]:

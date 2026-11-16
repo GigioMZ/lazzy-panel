@@ -2,18 +2,27 @@
 <div class="cab"><h1>Turnos</h1></div>
 <section class="bloque" id="turnos"><h2>Venta por hora de cada turno {{tip('turnos')}}</h2>
 {% if msg %}<p class="aviso">{{msg}}</p>{% endif %}
-<p class="sub">Venta con IVA en las horas de cada turno, promedio de las últimas 8 semanas{% if tur.desde %} ({{tur.desde.day}}/{{tur.desde.month}} al {{tur.hasta.day}}/{{tur.hasta.month}}){% endif %}.</p>
-<div class="metas">{% for x in tur.personas %}<div class="meta-c"><div class="t">{{x.persona}}{% if not x.en_resultado %} <span class="nota">fuera del estado de resultados</span>{% endif %}</div>
-<div class="n">{{x.por_hora|clp}} <span class="nota">por hora</span></div><div class="d">{{x.horas_semana|round(1)|string|replace('.0','')|replace('.',',')}} horas a la semana, {{x.venta_semana|clp}} de venta en su turno.
-{% if x.costo_hora %} Cuesta unos {{x.costo_hora|clp}} la hora: vende {{x.veces|string|replace('.',',')}} veces lo que cuesta.{% endif %}</div>
+<form class="filtros rango" method="get" aria-label="Período">{% for k, n in presets %}<a class="chip" href="/turnos?p={{k}}" aria-pressed="{{'true' if clave == k else 'false'}}">{{n}}</a>{% endfor %}
+<select name="mes" onchange="this.form.submit()" aria-label="Elegir un mes"><option value="">Un mes…</option>{% for m in meses %}<option value="{{m}}" {{'selected' if mes == m}}>{{m|mesl}}</option>{% endfor %}</select>
+<label>Desde <input type="date" name="desde" value="{{d0}}"></label><label>hasta <input type="date" name="hasta" value="{{d1}}" max="{{ultimo}}"></label><button class="btn sec mini">Ver</button></form>
+<p class="sub">{{nombre}}: del {{tur.desde.day}}/{{tur.desde.month}}/{{tur.desde.year}} al {{tur.hasta.day}}/{{tur.hasta.month}}/{{tur.hasta.year}} ({{tur.dias_rango}} días). Ventas cargadas hasta el {{ultimo.day}}/{{ultimo.month}}. La venta de cada hora se asigna a quien estaba de turno.</p>
+<div class="metas">{% for x in tur.personas %}<div class="meta-c {{ ('ok' if x.deja >= 0 else 'bad') if x.deja is defined else '' }}"><div class="t">{{x.persona}}{% if not x.en_resultado %} <span class="nota">fuera del estado de resultados</span>{% endif %}</div>
+<div class="n">{{x.venta|clp}} <span class="nota">vendido en su turno, con IVA</span></div>
+<dl class="ind"><div><dt>Días y horas trabajadas</dt><dd>{{x.dias}} días, {{x.horas|round|int}} h</dd></div>
+<div><dt>Venta por hora</dt><dd>{{x.por_hora|clp}} <span class="nota">con IVA</span></dd></div>
+<div><dt>Margen que dejó lo vendido {{tip('margen_turno')}}</dt><dd>{{x.margen|clp}} <span class="nota">sin IVA</span></dd></div>
+{% if x.costo is defined %}<div><dt>Lo que costó en el período</dt><dd>{{x.costo|clp}}</dd></div>
+<div><dt>{{'Dejó por sobre su costo' if x.deja >= 0 else 'Le faltó para cubrir su costo'}}</dt><dd><b>{{x.deja|abs|clp}}</b> <span class="nota">{{x.veces|string|replace('.',',')}} veces lo que cuesta</span></dd></div>{% endif %}</dl>
 <form class="fila" method="post" action="/turnos" style="margin-top:8px"><input type="hidden" name="csrf" value="{{csrf}}"><input type="hidden" name="accion" value="pago"><input type="hidden" name="persona" value="{{x.persona}}">
-<input class="n" name="pago" value="{{x.pago or ''}}" placeholder="pago al mes" inputmode="numeric" aria-label="Pago mensual de {{x.persona}}"><button class="btn sec mini">Guardar</button></form>
-{% if not x.en_resultado %}<p class="nota">Solo se usa para esta comparación; no entra al estado de resultados.</p>{% endif %}</div>{% endfor %}</div>
+<label class="nota">Pago al mes <input class="n" name="pago" value="{{x.pago if x.pago and x.pago_origen == 'anotado' else ''}}" placeholder="{{x.pago if x.pago else 'monto'}}" inputmode="numeric" aria-label="Pago mensual de {{x.persona}}"></label><button class="btn sec mini">Guardar</button></form>
+{% if x.pago_origen != 'anotado' and x.pago %}<p class="nota">Se usa el total de sueldos e imposiciones del estado de resultados.</p>{% endif %}
+{% if not x.en_resultado %}<p class="nota">Su pago solo se usa para esta comparación; no entra al estado de resultados.</p>{% endif %}</div>{% endfor %}</div>
+<p class="nota">Margen = venta sin IVA menos el costo de lo vendido en el período ({{tur.pct_costo|string|replace('.',',')}}% de la venta). Es lo que deja la venta de su turno para pagar sueldos, gastos y ganancia; no incluye gastos del local.</p>
 <div class="filtros" role="group" aria-label="Día">{% for d in range(6) %}<button type="button" class="chip" data-dia="{{d}}" aria-pressed="{{'true' if d == 0 else 'false'}}">{{dias[d]}}</button>{% endfor %}</div>
 <div class="grafico" style="height:240px"><canvas id="gHoras" role="img" aria-label="Venta promedio por hora y quién atiende"></canvas></div>
 <details class="panel anotar"><summary><b>Ver y cambiar turnos</b></summary>
-<div class="tabla"><table><tr><th class="l">Persona</th><th class="l">Día</th><th>Horario</th><th>Venta del turno por día</th><th>Ventas</th><th>Por hora</th><th></th></tr>
-{% for t in tur.turnos %}<tr><td class="l">{{t.persona}}</td><td class="l">{{t.dia_nombre}}</td><td>{{t.desde}} a {{t.hasta}}</td><td>{{t.venta_dia|clp}}</td><td>{{t.tickets_dia|string|replace('.',',')}}</td><td>{{t.por_hora|clp}}</td>
+<div class="tabla"><table><tr><th class="l">Persona</th><th class="l">Día</th><th>Horario</th><th>Días</th><th>Venta por día</th><th>Ventas por día</th><th>Por hora</th><th></th></tr>
+{% for t in tur.turnos %}<tr><td class="l">{{t.persona}}</td><td class="l">{{t.dia_nombre}}</td><td>{{t.desde}} a {{t.hasta}}</td><td>{{t.dias_trabajados}}</td><td>{{t.venta_dia|clp}}</td><td>{{t.tickets_dia|string|replace('.',',')}}</td><td>{{t.por_hora|clp}}</td>
 <td><form method="post" action="/turnos"><input type="hidden" name="csrf" value="{{csrf}}"><input type="hidden" name="accion" value="borrar"><input type="hidden" name="id" value="{{t.id}}"><button class="btn sec mini">Quitar</button></form></td></tr>{% endfor %}</table></div>
 <form method="post" action="/turnos"><input type="hidden" name="csrf" value="{{csrf}}"><input type="hidden" name="accion" value="agregar">
 <div class="campos tres"><label class="campo"><span>Persona</span><input name="persona" required></label><label class="campo"><span>Desde</span><input type="time" name="desde" required></label><label class="campo"><span>Hasta</span><input type="time" name="hasta" required></label></div>

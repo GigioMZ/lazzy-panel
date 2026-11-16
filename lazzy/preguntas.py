@@ -103,8 +103,10 @@ def contexto(con, hoy=None):
     out.append("Proveedores (total histórico sin IVA): " + "; ".join(f"{p['alias'] or p['razon']} {I.clp(p['neto'])} ({p['cat'] or 'sin categoría'})" for p in provs))
     t = G.analisis_turnos(con)
     if t["personas"]:
-        out.append("Turnos (venta con IVA, últimas 8 semanas): " + "; ".join(
-            f"{p['persona']} {p['horas_semana']:g} h/semana, vende {I.clp(p['venta_semana'])} por semana en su turno, {I.clp(p['por_hora'])} por hora"
+        G.costos_personas(con, cfg, t, iva)
+        out.append(f"Turnos ({t['desde']} a {t['hasta']}; venta con IVA): " + "; ".join(
+            f"{p['persona']} {p['horas_semana']:g} h/semana, vendió {I.clp(p['venta'])} en su turno, {I.clp(p['por_hora'])} por hora, "
+            f"margen {I.clp(p['margen'])} sin IVA" + (f", costó {I.clp(p['costo'])}" if p.get("costo") else "")
             + ("" if p["en_resultado"] else " (no está en el estado de resultados)") for p in t["personas"]))
     ivas = F.iva_mes(con, cur, cfg)
     out.append(f"IVA estimado {cur} hasta ahora: débito {I.clp(ivas['debito'])}, crédito {I.clp(ivas['credito'])}, PPM {I.clp(ivas['ppm'])}, "

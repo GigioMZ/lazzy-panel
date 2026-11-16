@@ -49,10 +49,12 @@
 
 <section class="dos bloque">
 <div class="panel"><h2>Indicadores del mes</h2><dl class="ind">
-<div><dt>Insumos + sueldos por cada $1.000 {{tip('insumos_sueldos')}}</dt><dd>{{ (c.pct.prime_cost * 10)|round|int|clp }} <span class="nota">sano: bajo $600</span></dd></div>
-<div><dt>Venta para no perder {{tip('equilibrio')}}</dt><dd>{{c.equilibrio.venta_neta_mes|clp}} <span class="nota">al mes sin IVA</span></dd></div>
-<div><dt>Días abiertos</dt><dd>{{c.ventas.dias_abiertos}} <span class="nota">{{ (c.ventas.neto / c.ventas.dias_abiertos)|clp if c.ventas.dias_abiertos }} por día</span></dd></div>
-<div><dt>Ventas {{tip('ticket')}}</dt><dd>{{c.ventas.tickets|num}} <span class="nota">promedio {{c.ventas.ticket_promedio|clp}} con IVA</span></dd></div>
+{% set pc = (c.pct.prime_cost * 10)|round|int %}
+<div><dt>Costo de lo vendido + sueldos, por cada $1.000 {{tip('insumos_sueldos')}}</dt><dd>{{pc|clp}} <span class="st {{'ok' if pc <= 600 else ('warn' if pc <= 650 else 'bad')}}">{{'bien' if pc <= 600 else ('justo' if pc <= 650 else 'alto')}}</span> <span class="nota">sano: hasta $600</span></dd></div>
+<div><dt>Venta mínima por día {{tip('equilibrio')}}</dt><dd>{{c.equilibrio.venta_bruta_dia|clp}} <span class="nota">con IVA, para no perder</span></dd></div>
+<div><dt>Venta promedio por día</dt><dd>{{ (c.ventas.bruto / c.ventas.dias_abiertos)|round|int|clp if c.ventas.dias_abiertos }} <span class="nota">con IVA, en {{c.ventas.dias_abiertos}} días abiertos</span></dd></div>
+<div><dt>Cantidad de ventas {{tip('ventas_n')}}</dt><dd>{{c.ventas.tickets|num}} <span class="nota">{{ (c.ventas.tickets / c.ventas.dias_abiertos)|round|int if c.ventas.dias_abiertos }} por día</span></dd></div>
+<div><dt>Promedio por venta {{tip('ticket')}}</dt><dd>{{c.ventas.ticket_promedio|clp}} <span class="nota">con IVA</span></dd></div>
 <div><dt>Comisión de tarjetas {{tip('comision_tarjetas')}}</dt><dd>{{c.comision.monto|clp}} <span class="nota">{{c.comision.pct|pct(2)}} de lo cobrado con tarjeta{{', estimada' if c.comision.estimada}}</span></dd></div>
 </dl></div>
 <div class="panel"><h2>Resultado de cada mes</h2><p class="sub">Ganancia o pérdida operacional. Los meses sin facturas del SII no aparecen.</p>

@@ -18,7 +18,7 @@
 <div class="tarjeta"><div class="t">Margen bruto {{ tip('margen_periodo') }}</div><div class="n">{{r.margen|clp}}</div><div class="d">{{ delta(var.margen) }} {{r.margen_pct|pct(0)}} de la venta</div>{{sparks.margen}}</div>
 <div class="tarjeta"><div class="t">Sueldos y gastos {{ tip('sueldos_gastos') }}</div><div class="n">{{(r.sueldos+r.gastos)|clp}}</div><div class="d">sueldos {{r.sueldos|clp}}, local y tarjetas {{r.gastos|clp}}</div>{{sparks.sueldos_gastos}}</div>
 <div class="tarjeta fuerte"><div class="t">Ganancia estimada {{ tip('ganancia_est') }}</div><div class="n {{ 'malo' if r.ganancia < 0 }}">{{r.ganancia|clp}}</div><div class="d">{{ delta(var.ganancia) }} {{r.ganancia_pct|pct(0)}} de la venta</div>{{sparks.ganancia}}</div>
-<div class="tarjeta"><div class="t">Ventas {{ tip('ticket') }}</div><div class="n">{{r.tickets|num}}</div><div class="d">{{ delta(var.tickets) }} promedio {{r.ticket|clp}} con IVA {{ delta(var.ticket) }}</div>{{sparks.tickets}}</div>
+<div class="tarjeta"><div class="t">Ventas {{ tip('ventas_n') }}</div><div class="n">{{r.tickets|num}}</div><div class="d">{{ delta(var.tickets) }} promedio {{r.ticket|clp}} con IVA {{ delta(var.ticket) }}</div>{{sparks.tickets}}</div>
 </div>
 <p class="nota">La línea de cada tarjeta muestra las últimas 12 semanas, desde la del {{sem_desde}}.</p>
 

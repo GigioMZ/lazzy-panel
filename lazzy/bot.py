@@ -35,6 +35,7 @@ AYUDA = """Hola, soy el bot de Lazzy. Me puedes mandar:
 • Cuentas (luz, agua, etc.) en foto, o escritas: "luz 250730, agua 33209".
 • Los Excel de FUDO (Ventas, Productos y Stock) y el CSV de compras del SII: los cargo al panel.
 • El F29 en PDF: lo guardo y lo comparo con lo que estimó el panel.
+• Llegadas sin factura (sándwiches): "llegaron 10 ciabatta jamón queso y 6 salame".
 • Preguntas: "¿cuánto vendimos la semana pasada?", "¿qué producto deja menos?", "¿cómo va el mes contra la meta?".
 
 Además te aviso solo si un proveedor sube un precio, si un día vendió muy bajo lo normal, si no llega la factura de
@@ -165,6 +166,9 @@ class Bot:
                 return self.proponer(chat, usuario, C.leer_imagen(self.con, datos), ruta)
             if texto:
                 self.tg("sendChatAction", chat_id=chat, action="typing")
+                lleg = ST.parsear_llegada(self.con, texto)
+                if lleg is not None:
+                    return self.tg.enviar(chat, self.llegada(lleg, usuario))
                 if P.es_pregunta(texto):
                     return self.tg.enviar(chat, P.responder(self.con, texto, hoy=datetime.now(ZONA).date()))
                 d = C.leer_texto(self.con, texto, hoy=datetime.now(ZONA).date())
@@ -230,6 +234,19 @@ class Bot:
             r = import_rcv_compras(self.con, ruta, per)
             return self.tg.enviar(chat, f"Cargué {r['documentos']} documentos de compra del SII de {I.mes_largo(per)}.\n\n" + estado_datos(self.con))
         return self.tg.enviar(chat, "No sé qué hacer con ese tipo de archivo. Mándame PDF, foto, Excel de FUDO o CSV del SII.")
+
+    def llegada(self, lleg, usuario):
+        if not lleg["items"]:
+            return ("No encontré esos productos en el stock. Escribe el nombre como está en FUDO, por ejemplo "
+                    "«llegaron 10 ciabatta jamón queso».")
+        for p, n in lleg["items"]:
+            ST.registrar_llegada(self.con, p, n, datetime.now(ZONA).date().isoformat(), origen=f"bot ({usuario})")
+        cfg = F.load_cfg(self.con)
+        est = {x["producto"]: x for x in ST.estado(self.con, cfg, datetime.now(ZONA).date())}
+        txt = "Anoté en el stock:\n" + "\n".join(f"• +{n:g} {p} (ahora debería haber {est[p]['esperado']:g})" for p, n in lleg["items"])
+        if lleg["faltan"]:
+            txt += "\nNo reconocí: " + ", ".join(lleg["faltan"])
+        return txt + "\n\nSi me equivoqué, se borra en https://panel.lazzycoffee.cl/stock"
 
     def f29(self, datos):
         d = IVA.leer_f29(self.con, datos)

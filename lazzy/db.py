@@ -152,7 +152,16 @@ def _m6(con):
     con.execute("UPDATE costo_fijo SET hasta='2026-06' WHERE estimado=1 AND nombre LIKE 'S_ndwiches%' AND COALESCE(hasta,'9999') > '2026-06'")
 
 
-MIGRACIONES = [_m1, _m2, _m3, _m4, _m5, _m6]
+def _m7(con):
+    """Llegadas de productos sin factura propia (por ejemplo, los sándwiches que se traen hechos)."""
+    con.executescript("""
+    CREATE TABLE IF NOT EXISTS stock_entrada(id INTEGER PRIMARY KEY, fecha TEXT NOT NULL, producto TEXT NOT NULL,
+      cantidad REAL NOT NULL, nota TEXT, origen TEXT, creado TEXT);
+    ALTER TABLE stock_conteo ADD COLUMN creado TEXT;
+    """)
+
+
+MIGRACIONES = [_m1, _m2, _m3, _m4, _m5, _m6, _m7]
 
 
 def migrar(con):

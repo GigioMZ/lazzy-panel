@@ -197,3 +197,44 @@ def test_stock_se_sube_por_el_panel(tmp_path):
     t = c.get("/stock").text
     assert "Brownies" in t and "no tienen una factura vinculada" in t
     assert c.get("/turnos").status_code == 200 and "Compras de insumos" in c.get("/resultados?periodo=2026-10").text
+
+
+def test_stock_por_bot_llegadas_y_sugerencias(tmp_path):
+    import io
+    import openpyxl
+    from lazzy import bot as B
+    from lazzy import stock as ST
+    con = connect(":memory:")
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Productos"
+    ws.append(["Id.", "Categoría", "Código", "Nombre", "Disponibilidad", "Unidad", "Stock", "Unidad", "Stock Mínimo", "Unidad", "Proveedor"])
+    ws.append([1, "Pasteleria", None, "Brownies", 16, "unid.", 16, "unid.", 4, "unid.", "Cakehouse"])
+    ws.append([2, "Sandwiches", None, "Ciabatta Jamon queso", 2, "unid.", 2, "unid.", 0, "unid.", None])
+    ws.append([3, "Sandwiches", None, "Ciabatta Salame Queso", 6, "unid.", 6, "unid.", 0, "unid.", None])
+    b = io.BytesIO()
+    wb.save(b)
+
+    class TG:
+        env = []
+
+        def __call__(self, *a, **k):
+            return {}
+
+        def enviar(self, c, t, botones=None):
+            self.env.append(t)
+
+        def bajar(self, fid):
+            return b.getvalue()
+    tg = TG()
+    bot = B.Bot(con, tg, tmp_path)
+    con.execute("INSERT INTO telegram_chat VALUES (7,'Javi','javi','2026-11-16')")
+    bot.procesar({"message": {"chat": {"id": 7}, "document": {"file_id": "x", "file_name": "stock.xlsx"}}})
+    assert "Guardé el stock de 3 productos" in tg.env[-1] and "Es el primero" in tg.env[-1]
+    bot.procesar({"message": {"chat": {"id": 7}, "text": "llegaron 10 ciabatta jamon queso y 6 salame"}})
+    assert "+10 Ciabatta Jamon queso (ahora debería haber 12)" in tg.env[-1] and "+6 Ciabatta Salame Queso (ahora debería haber 12)" in tg.env[-1]
+    bot.procesar({"message": {"chat": {"id": 7}, "text": "llegaron 3 tortas de mazapan"}})
+    assert "No encontré esos productos" in tg.env[-1]
+    con.execute("INSERT INTO factura_linea VALUES (33,'1-9',5,0,'brownies nuez',12,1252,15024,'Brownies Nuez')")
+    s = ST.sugerencias(con)
+    assert [(x["producto"], x["clave"]) for x in s] == [("Brownies", "brownies nuez")]

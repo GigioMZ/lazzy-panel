@@ -288,7 +288,7 @@ def resultados(request: Request):
     cfg = F.load_cfg(con)
     desde, hasta, lista, ps = rango(request, con)
     cols = [F.pnl_mes(con, x, cfg) for x in lista]
-    grupos = [("costo_venta", "Insumos y productos", "insumos"), ("personal", "Sueldos", "sueldos"),
+    grupos = [("costo_venta", "Costo de lo vendido", "costo_vendido"), ("personal", "Sueldos", "sueldos"),
               ("gasto_operacional", "Gastos del local", "gastos_local"),
               ("sin_clasificar", "Facturas sin categoría", "sin_categoria")]
     cats = {g: sorted({c for p in cols for c in p["lineas"].get(g, {})}) for g, _, _ in grupos}
@@ -571,9 +571,39 @@ def stock_page(request: Request):
         "SELECT DISTINCT s.producto FROM stock_conteo s WHERE NOT EXISTS (SELECT 1 FROM vinculo v WHERE v.tipo='producto' AND v.destino=s.producto) "
         "ORDER BY 1")]
     mes = date.today().strftime("%Y-%m")
-    return page(request, "stock.html", filas=filas, ajustes=aj, ultimo=ult, sin_vinculo=sin_vinculo,
+    entradas = [dict(r) for r in con.execute("SELECT * FROM stock_entrada ORDER BY id DESC LIMIT 15")]
+    return page(request, "stock.html", sug=ST.sugerencias(con), entradas=entradas, prods=ST.productos(con),
+                hoy=date.today().isoformat(), msg=request.session.pop("msg", None), filas=filas, ajustes=aj, ultimo=ult, sin_vinculo=sin_vinculo,
                 valor=sum(f["valor"] or 0 for f in filas), merma=ST.merma_mes(con, mes, cfg), mes=mes,
                 dias=(date.today() - date.fromisoformat(ult)).days if ult else None)
+
+
+@app.post("/stock")
+async def stock_post(request: Request):
+    f = await form(request)
+    con = db()
+    acc = f.get("accion")
+    if acc == "llegada":
+        try:
+            n = float(str(f.get("cantidad", "")).replace(",", "."))
+        except ValueError:
+            n = 0
+        prod = str(f.get("producto", ""))
+        if n > 0 and prod in ST.productos(con):
+            ST.registrar_llegada(con, prod, n, str(f.get("fecha") or date.today().isoformat())[:10],
+                                 str(f.get("nota", "")).strip()[:120] or None, "panel")
+            request.session["msg"] = f"Anoté que llegaron {n:g} {prod}."
+    elif acc == "borrar_llegada":
+        con.execute("DELETE FROM stock_entrada WHERE id=?", (int(f["id"]),))
+        con.commit()
+    elif acc == "vincular":
+        for v in f.getlist("v"):
+            rut, _, resto = str(v).partition("|")
+            clave, _, prod = resto.partition("|")
+            if rut and clave and prod:
+                PV.vincular(con, rut, clave, "producto", prod, 1)
+        request.session["msg"] = "Vínculos guardados: los pedidos de esos productos ya se suman solos al stock."
+    return RedirectResponse("/stock", 303)
 
 
 @app.get("/seguimiento", response_class=HTMLResponse)
@@ -631,7 +661,38 @@ async def compras_proveedor(request: Request):
 
 @app.get("/turnos", response_class=HTMLResponse)
 def turnos_page(request: Request):
-    return costos_fijos(request, "turnos.html")
+    user(request)
+    con = db()
+    ultimo = con.execute("SELECT MAX(fecha) FROM venta_hora").fetchone()[0]
+    if not ultimo:
+        return RedirectResponse("/cargar", 303)
+    ultimo = date.fromisoformat(ultimo)
+    q = request.query_params
+    clave = q.get("p") or ("" if q.get("desde") or q.get("mes") else "mes_pasado")
+    pres = TB.presets(ultimo)
+    mes = q.get("mes", "")
+    if clave in pres:
+        nombre, d0, d1 = pres[clave]
+    elif len(mes) == 7 and mes in F.periodos(con):
+        d0, d1 = date.fromisoformat(mes + "-01"), date.fromisoformat(F.fin_de_mes(mes))
+        nombre = I.mes_largo(mes).capitalize()
+    else:
+        try:
+            d0, d1 = date.fromisoformat(q.get("desde", "")), date.fromisoformat(q.get("hasta", ""))
+        except ValueError:
+            nombre, d0, d1 = pres["mes_pasado"]
+            clave = "mes_pasado"
+        else:
+            d0, d1 = min(d0, d1), max(d0, d1)
+            nombre = "Rango elegido"
+    d1 = min(d1, ultimo)
+    cfg = F.load_cfg(con, d1.isoformat())
+    tur = GS.analisis_turnos(con, d0, d1)
+    GS.costos_personas(con, cfg, tur, cfg["empresa"]["iva"])
+    horas = {d: GS.horas_por_turno(con, d, d0, d1) for d in range(6)}
+    return page(request, "turnos.html", tur=tur, dias=GS.DIAS, graf=json.dumps({"horas": horas}), msg=request.session.pop("msg", None),
+                presets=[(k, v[0]) for k, v in pres.items() if k in ("semana_pasada", "mes", "mes_pasado", "30", "90")],
+                clave=clave, nombre=nombre, d0=d0, d1=d1, ultimo=ultimo, meses=list(reversed(F.periodos(con))), mes=mes)
 
 
 @app.get("/costos-fijos", response_class=HTMLResponse)
@@ -643,16 +704,8 @@ def costos_fijos(request: Request, plantilla: str = "costos_fijos.html"):
     cfg = F.load_cfg(con)
     ps0 = F.periodos(con)
     serv = [x for x in GS.servicios_mes(con, 8) if not ps0 or x["periodo"] >= ps0[0]]
-    tur = GS.analisis_turnos(con)
-    pagos = {r["clave"][5:]: int(float(r["valor"])) for r in con.execute("SELECT * FROM parametro WHERE clave LIKE 'pago_%'")}
-    for x in tur["personas"]:
-        x["pago"] = pagos.get(x["persona"])
-        if x["pago"] and x["horas_semana"]:
-            x["costo_hora"] = round(x["pago"] / (x["horas_semana"] * 4.33))
-            x["veces"] = round(x["por_hora"] / x["costo_hora"], 1) if x["costo_hora"] else None
-    horas = {d: GS.horas_por_turno(con, d) for d in range(6)}
-    return page(request, plantilla, serv=serv, tur=tur, esp=GS.esperado(con), dias=GS.DIAS,
-                graf=json.dumps({"serv": serv, "horas": horas}), msg=request.session.pop("msg", None),
+    return page(request, plantilla, serv=serv, esp=GS.esperado(con),
+                graf=json.dumps({"serv": serv}), msg=request.session.pop("msg", None),
                 rows=[dict(r) for r in con.execute("SELECT * FROM costo_fijo ORDER BY categoria, nombre")],
                 ppm=cfg["empresa"]["ppm_tasa"] * 100, emp=cfg["empresa"],
                 calc=F.tasa_tarjetas(con, dict(cfg, empresa=dict(cfg["empresa"], comision_debito=None, comision_credito=None))))

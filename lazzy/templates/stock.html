@@ -6,11 +6,27 @@
 <div class="tarjetas"><div class="tarjeta"><div class="t">Stock a costo</div><div class="n">{{valor|clp}}</div><div class="d">sin IVA, productos con costo cargado</div></div>
 <div class="tarjeta"><div class="t">Merma de {{mes|mesl}} {{tip('merma')}}</div><div class="n">{{merma|clp}}</div><div class="d">se resta de la utilidad del mes</div></div>
 <div class="tarjeta"><div class="t">Último stock subido</div><div class="n">{{ultimo[8:10]}}-{{ultimo[5:7]}}</div><div class="d">hace {{dias}} día{{'s' if dias != 1}}{% if dias > 10 %}. Conviene subirlo de nuevo{% endif %}</div></div></div>
-{% if sin_vinculo %}<p class="aviso">Estos productos no tienen una factura vinculada, así que sus pedidos no se suman solos: {{sin_vinculo[:12]|join(', ')}}{{'…' if sin_vinculo|length > 12}}. Se vinculan una vez en la ficha de su proveedor, en <a href="/compras">Facturas y proveedores</a>. Mientras tanto, al subir el stock aparecerán como «sobran».</p>{% endif %}
+{% if msg %}<p class="aviso ok">{{msg}}</p>{% endif %}
+{% if sug %}<form class="panel bloque" method="post"><input type="hidden" name="csrf" value="{{csrf}}"><input type="hidden" name="accion" value="vincular">
+<h2>Vincular con sus facturas</h2><p class="sub">Encontré estos productos en las facturas. Al vincularlos, cada pedido que llegue por el bot suma solo al stock (y actualiza su costo).</p>
+<ul class="check">{% for s in sug %}<li><label class="fila" style="flex:1;gap:10px"><input type="checkbox" name="v" value="{{s.rut}}|{{s.clave}}|{{s.producto}}" checked>
+<span><b>{{s.producto}}</b> = «{{s.texto}}» de {{s.proveedor}}</span></label></li>{% endfor %}</ul>
+<p class="nota">Si la factura trae cajas o packs (por ejemplo, 1 caja de 12), después cambia el «divide por» en la ficha del proveedor.</p><button class="btn">Vincular los marcados</button></form>{% endif %}
+{% if sin_vinculo %}<p class="aviso">Estos productos no tienen una factura vinculada, así que sus pedidos no se suman solos: {{sin_vinculo[:12]|join(', ')}}{{'…' if sin_vinculo|length > 12}}. Se vinculan una vez en la ficha de su proveedor, en <a href="/compras">Facturas y proveedores</a>. Los que llegan sin factura (como los sándwiches) se anotan abajo o por el bot: «llegaron 10 ciabatta jamón queso».</p>{% endif %}
 <section class="bloque"><h2>Qué hay hoy</h2><div class="tabla"><table><tr><th class="l">Producto</th><th>Último conteo</th><th>Llegó</th><th>Se vendió</th><th>Debería haber</th><th>Mínimo</th><th>Costo c/u</th><th>Valor</th></tr>
 {% for f in filas %}<tr class="{{'falta' if f.bajo}}"><td class="l"><a href="/receta?p={{f.producto|urlencode}}">{{f.producto}}</a></td><td>{{f.conteo|round|int}}</td><td>{{('+' ~ (f.entradas|round|int)) if f.entradas else '—'}}</td><td>{{('-' ~ (f.ventas|round|int)) if f.ventas else '—'}}</td>
 <td><b>{{f.esperado|round|int}}</b>{% if f.bajo %} <span class="delta baja">bajo</span>{% endif %}</td><td>{{f.minimo|round|int if f.minimo is not none else '—'}}</td><td>{{f.costo|clp if f.costo is not none else 'sin costo'}}</td><td>{{f.valor|clp}}</td></tr>{% endfor %}</table></div>
 <p class="nota">Los combos también descuentan (un Cappu + Brownie resta un Brownie). Un combo genérico como «Cappu + Sandwich» no se puede descontar de un sándwich en particular.</p></section>
+<section class="bloque"><h2>Llegadas sin factura</h2>
+<p class="sub">Para lo que llega sin una factura propia, como los sándwiches que se traen hechos. Por el bot: «llegaron 10 ciabatta jamón queso y 6 salame».</p>
+<form class="fila" method="post"><input type="hidden" name="csrf" value="{{csrf}}"><input type="hidden" name="accion" value="llegada">
+<label>Llegaron <input class="n" name="cantidad" inputmode="decimal" required style="width:70px"></label>
+<select name="producto" aria-label="Producto">{% for p in prods %}<option>{{p}}</option>{% endfor %}</select>
+<label>el <input type="date" name="fecha" value="{{hoy}}"></label><input name="nota" placeholder="nota (opcional)" maxlength="120"><button class="btn">Anotar</button></form>
+{% if entradas %}<div class="tabla" style="max-width:720px"><table><tr><th>Fecha</th><th class="l">Producto</th><th>Cantidad</th><th class="l">Por</th><th></th></tr>
+{% for e in entradas %}<tr><td>{{e.fecha[8:10]}}-{{e.fecha[5:7]}}</td><td class="l">{{e.producto}}{% if e.nota %} <span class="nota">{{e.nota}}</span>{% endif %}</td><td>{{e.cantidad|round|int}}</td><td class="l nota">{{e.origen}}</td>
+<td><form method="post"><input type="hidden" name="csrf" value="{{csrf}}"><input type="hidden" name="accion" value="borrar_llegada"><input type="hidden" name="id" value="{{e.id}}"><button class="btn sec mini">Borrar</button></form></td></tr>{% endfor %}</table></div>{% endif %}</section>
+
 <section class="bloque"><h2>Diferencias al contar</h2>
 {% if ajustes %}<p class="sub">Cada vez que subieron el stock, lo que el panel esperaba contra lo que había. Si falta, es merma; si sobra, llegó algo sin factura vinculada o se contó de más.</p>
 <div class="tabla"><table><tr><th>Fecha</th><th class="l">Producto</th><th>Había</th><th>Llegó</th><th>Se vendió</th><th>Esperado</th><th>Contado</th><th>Diferencia</th><th>Valor</th></tr>

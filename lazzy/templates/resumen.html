@@ -44,13 +44,13 @@
 <div class="kpi"><div class="t">Vendiste (sin IVA) {{ tip('venta_neta') }}</div><div class="n">{{p.ventas.neto|clp}}</div>
 <div class="d">{% if kpi.var_venta is not none and not parcial %}{{ '▲' if kpi.var_venta >= 0 else '▼' }} {{ kpi.var_venta|abs|pct }} {{ 'más' if kpi.var_venta >= 0 else 'menos' }} que {{ ctx.prev.periodo|mesl }}<br>{% endif %}{% if kpi.var_anio is not none and not parcial %}{{ '▲' if kpi.var_anio >= 0 else '▼' }} {{ kpi.var_anio|abs|pct }} {{ 'más' if kpi.var_anio >= 0 else 'menos' }} que {{ ctx.anio.periodo|mesl }}<br>{% endif %}{{p.ventas.tickets|num}} ventas, {{p.ventas.ticket_promedio|clp}} promedio por venta {{ tip('ticket') }}</div></div>
 {% if v.con_resultado %}
-<div class="kpi"><div class="t">Insumos {{ tip('insumos') }}</div><div class="n">${{kpi.insumos}}</div>
+<div class="kpi"><div class="t">Costo de lo vendido {{ tip('insumos') }}</div><div class="n">${{kpi.insumos}}</div>
 <div class="d">de cada $1.000 vendidos<br><span class="st {{kpi.e_insumos}}">{{ {'ok':'Bien','warn':'Atención','bad':'Alto'}[kpi.e_insumos] }}</span> lo sano es hasta $350</div></div>
-<div class="kpi"><div class="t">Insumos + sueldos {{ tip('insumos_sueldos') }}</div><div class="n">${{kpi.ins_sue}}</div>
+<div class="kpi"><div class="t">Costo de lo vendido + sueldos {{ tip('insumos_sueldos') }}</div><div class="n">${{kpi.ins_sue}}</div>
 <div class="d">de cada $1.000 vendidos<br><span class="st {{kpi.e_ins_sue}}">{{ {'ok':'Bien','warn':'Atención','bad':'Alto'}[kpi.e_ins_sue] }}</span> lo sano es hasta $600</div></div>
 {% endif %}
 <div class="kpi"><div class="t">Venta mínima diaria {{ tip('equilibrio') }}</div><div class="n">{{p.equilibrio.venta_bruta_dia|clp}}</div>
-<div class="d">para no perder plata<br>{% if kpi.e_dia %}<span class="st {{kpi.e_dia}}">{{ 'La superas' if kpi.e_dia=='ok' else 'No llegas' }}</span> {% endif %}vendiste {{kpi.dia|clp}} por día en {{p.ventas.dias_abiertos}} días abiertos</div></div>
+<div class="d">con IVA, para no perder plata<br>{% if kpi.e_dia %}<span class="st {{kpi.e_dia}}">{{ 'La superas' if kpi.e_dia=='ok' else 'No llegas' }}</span> {% endif %}vendiste en promedio {{kpi.dia|clp}} con IVA por día, en {{p.ventas.dias_abiertos}} días abiertos</div></div>
 {% if p.tiene_compras and not parcial %}<div class="kpi"><div class="t">IVA a pagar {{ tip('iva_pagar') }}</div><div class="n">{{p.iva.iva_a_pagar|clp}}</div>
 <div class="d">estimado, {% if p.iva.ppm %}más {{p.iva.ppm|clp}} de PPM{% else %}sin PPM configurado{% endif %} {{ tip('ppm') }}<br><a href="/impuestos">Ver todos los meses</a></div></div>{% endif %}
 </div></section>

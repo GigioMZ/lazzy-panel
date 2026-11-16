@@ -1,7 +1,7 @@
 {% extends "base.html" %}{% from "_m.html" import rango_meses %}{% block title %}Mes a mes{% endblock %}{% block main %}
 <div class="cab"><h1>Mes a mes</h1>{{ rango_meses(ps, desde, hasta) }}</div>
 <p class="sub">Lo que vendiste, en qué se gastó y cuánto quedó cada mes. Todos los montos van sin IVA.</p>
-<p class="aviso">Los insumos se anotan el mes en que llega la factura, no cuando se usan, así que un mes puede verse peor que otro solo porque compraste más. Mira la columna Promedio. {{ tip('por_compras') }}</p>
+<p class="aviso">El costo de cada mes es el de lo vendido (unidades × costo de cada producto, más la merma medida), no lo comprado. Las compras por factura están en el detalle de cada mes. {{ tip('utilidad_vs_compras') }}</p>
 {% macro celda(p, valor) %}{% if p.completo %}{{ valor|clp }}{% else %}<span title="Falta el archivo de compras del SII">—</span>{% endif %}{% endmacro %}
 <div class="tabla"><table><tr><th></th>{% for p in cols %}<th>{{p.periodo|mes}}</th>{% endfor %}<th>Promedio</th></tr>
 <tr class="fuerte"><td><span class="th-in">Vendiste {{ tip('venta_neta') }}</span></td>{% for p in cols %}<td>{{p.ventas.neto|clp}}</td>{% endfor %}<td>{{prom.ventas|clp}}</td></tr>

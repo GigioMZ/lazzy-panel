@@ -53,52 +53,87 @@ def turnos(con):
     return [dict(r) for r in con.execute("SELECT * FROM turno ORDER BY persona, dia, desde")]
 
 
-def analisis_turnos(con, semanas=8, hoy=None):
-    """Venta (con IVA) de cada turno: promedio por día, por hora trabajada y por semana, con las últimas `semanas`.
-    Las horas partidas (16:30) se reparten en proporción."""
+def analisis_turnos(con, desde=None, hasta=None, semanas=8):
+    """Venta de cada turno en un rango de fechas (por defecto, las últimas `semanas` con ventas cargadas).
+    La venta de cada hora se asigna a quien está de turno; una hora partida (16:30) se reparte en proporción."""
     fin = con.execute("SELECT MAX(fecha) FROM venta_hora").fetchone()[0]
     if not fin:
         return {"personas": [], "turnos": []}
-    fin = date.fromisoformat(fin)
-    ini = fin - timedelta(days=7 * semanas - 1)
-    por = defaultdict(lambda: defaultdict(float))       # dia -> hora -> venta total en el período
-    tick = defaultdict(lambda: defaultdict(float))
-    dias = defaultdict(set)
-    for r in con.execute("SELECT fecha, hora, bruto, tickets FROM venta_hora WHERE fecha BETWEEN ? AND ?", (ini.isoformat(), fin.isoformat())):
+    hasta = min(hasta or date.fromisoformat(fin), date.fromisoformat(fin))
+    desde = desde or hasta - timedelta(days=7 * semanas - 1)
+    ts = turnos(con)
+    por_turno = {t["id"]: {"venta": 0.0, "tickets": 0.0, "dias": set()} for t in ts}
+    for r in con.execute("SELECT fecha, hora, bruto, tickets FROM venta_hora WHERE fecha BETWEEN ? AND ?",
+                         (desde.isoformat(), hasta.isoformat())):
         d = date.fromisoformat(r["fecha"]).weekday()
-        por[d][r["hora"]] += r["bruto"]
-        tick[d][r["hora"]] += r["tickets"]
-        if r["bruto"] > 0:
-            dias[d].add(r["fecha"])
+        for t in ts:
+            if t["dia"] != d:
+                continue
+            a, b = _horas(t["desde"]), _horas(t["hasta"])
+            frac = max(0.0, min(b, r["hora"] + 1) - max(a, r["hora"]))
+            if frac:
+                x = por_turno[t["id"]]
+                x["venta"] += r["bruto"] * frac
+                x["tickets"] += r["tickets"] * frac
+                if r["bruto"] > 0:
+                    x["dias"].add(r["fecha"])
     filas = []
-    for t in turnos(con):
-        a, b = _horas(t["desde"]), _horas(t["hasta"])
-        n = len(dias[t["dia"]]) or 1
-        v = k = 0.0
-        for h in range(int(a), int(b + 0.999)):
-            frac = max(0.0, min(b, h + 1) - max(a, h))
-            v += por[t["dia"]].get(h, 0) * frac
-            k += tick[t["dia"]].get(h, 0) * frac
-        filas.append(dict(t, dia_nombre=DIAS[t["dia"]], horas=b - a, venta_dia=round(v / n), tickets_dia=round(k / n, 1),
-                          por_hora=round(v / n / (b - a)) if b > a else 0))
+    for t in ts:
+        x = por_turno[t["id"]]
+        n, h = len(x["dias"]), _horas(t["hasta"]) - _horas(t["desde"])
+        filas.append(dict(t, dia_nombre=DIAS[t["dia"]], horas=h, dias_trabajados=n, venta=round(x["venta"]),
+                          venta_dia=round(x["venta"] / n) if n else 0, tickets_dia=round(x["tickets"] / n, 1) if n else 0,
+                          por_hora=round(x["venta"] / n / h) if n and h else 0))
     personas = []
     for nombre in sorted({f["persona"] for f in filas}):
         fs = [f for f in filas if f["persona"] == nombre]
-        h = sum(f["horas"] for f in fs)
-        v = sum(f["venta_dia"] for f in fs)
-        personas.append({"persona": nombre, "horas_semana": h, "venta_semana": v, "por_hora": round(v / h) if h else 0,
-                         "en_resultado": all(f["en_resultado"] for f in fs), "dias": len(fs)})
-    return {"personas": personas, "turnos": filas, "desde": ini, "hasta": fin}
+        horas = sum(f["horas"] * f["dias_trabajados"] for f in fs)
+        venta = sum(f["venta"] for f in fs)
+        personas.append({"persona": nombre, "horas": horas, "venta": venta, "dias": sum(f["dias_trabajados"] for f in fs),
+                         "horas_semana": sum(f["horas"] for f in fs), "por_hora": round(venta / horas) if horas else 0,
+                         "en_resultado": all(f["en_resultado"] for f in fs)})
+    return {"personas": personas, "turnos": filas, "desde": desde, "hasta": hasta}
 
 
-def horas_por_turno(con, dia=0):
-    """Venta promedio por hora de un día, con quién está en cada hora (para el gráfico)."""
+def costos_personas(con, cfg, tur, iva=0.19):
+    """Para cada persona: cuánto costó en el rango (pago mensual prorrateado por días) y cuánto margen dejó lo vendido
+    en su turno (venta sin IVA menos el costo de lo vendido, al % del rango). Si una sola persona está en el estado de
+    resultados y no tiene pago anotado, su costo es el de sueldos e imposiciones."""
+    from . import finance as F
+    if not tur["personas"]:
+        return
+    pagos = {r["clave"][5:]: int(float(r["valor"])) for r in con.execute("SELECT * FROM parametro WHERE clave LIKE 'pago_%'")}
+    en_res = [x for x in tur["personas"] if x["en_resultado"]]
+    sueldos = sum(c["monto"] for c in cfg["costo_fijo"] if c["categoria"] == "remuneraciones"
+                  and c["desde"] <= tur["hasta"].strftime("%Y-%m") <= c["hasta"])
+    c = F.costo_vendido(con, tur["desde"].isoformat(), tur["hasta"].isoformat(), cfg)
+    pct_costo = c["total"] / c["venta_productos"] if c["venta_productos"] else 0.4
+    dias = (tur["hasta"] - tur["desde"]).days + 1
+    for x in tur["personas"]:
+        x["pago"] = pagos.get(x["persona"])
+        x["pago_origen"] = "anotado"
+        if not x["pago"] and x["en_resultado"] and len(en_res) == 1 and sueldos:
+            x["pago"], x["pago_origen"] = sueldos, "sueldos del estado de resultados"
+        x["neto"] = round(x["venta"] / (1 + iva))
+        x["margen"] = round(x["neto"] * (1 - pct_costo))
+        if x["pago"]:
+            x["costo"] = round(x["pago"] * dias / 30.44)
+            x["costo_hora"] = round(x["costo"] / x["horas"]) if x["horas"] else None
+            x["deja"] = x["margen"] - x["costo"]
+            x["veces"] = round(x["margen"] / x["costo"], 1) if x["costo"] else None
+    tur["pct_costo"] = round(100 * pct_costo, 1)
+    tur["dias_rango"] = dias
+
+
+def horas_por_turno(con, dia=0, desde=None, hasta=None):
+    """Venta promedio por hora de un día de la semana en el rango, con quién está en cada hora (para el gráfico)."""
     fin = con.execute("SELECT MAX(fecha) FROM venta_hora").fetchone()[0]
     if not fin:
         return []
-    ini = (date.fromisoformat(fin) - timedelta(days=55)).isoformat()
-    filas = con.execute("SELECT hora, SUM(bruto) b, COUNT(DISTINCT fecha) n FROM venta_hora WHERE fecha >= ? AND "
-                        "CAST(strftime('%w', fecha) AS INTEGER) = ? GROUP BY hora ORDER BY hora", (ini, (dia + 1) % 7)).fetchall()
+    hasta = (hasta or date.fromisoformat(fin)).isoformat()
+    ini = (desde or date.fromisoformat(fin) - timedelta(days=55)).isoformat()
+    filas = con.execute("SELECT hora, SUM(bruto) b, COUNT(DISTINCT fecha) n FROM venta_hora WHERE fecha BETWEEN ? AND ? AND "
+                        "CAST(strftime('%w', fecha) AS INTEGER) = ? GROUP BY hora ORDER BY hora", (ini, hasta, (dia + 1) % 7)).fetchall()
     ts = [t for t in turnos(con) if t["dia"] == dia]
     out = []
     for r in filas:
