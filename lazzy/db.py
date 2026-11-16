@@ -60,8 +60,32 @@ def _m1(con):
     con.execute("INSERT OR IGNORE INTO insumo_hist SELECT id, '2000-01-01', cantidad_formato, precio_formato FROM insumo")
 
 
+def _m2(con):
+    """Bot de Telegram: detalle de facturas, gastos con origen, vinculación de chats y uso de la API."""
+    con.executescript("""
+    ALTER TABLE compra ADD COLUMN origen TEXT DEFAULT 'sii';
+    ALTER TABLE gasto_manual ADD COLUMN origen TEXT DEFAULT 'panel';
+    ALTER TABLE gasto_manual ADD COLUMN creado TEXT;
+    ALTER TABLE gasto_manual ADD COLUMN usuario TEXT;
+    ALTER TABLE costo_fijo ADD COLUMN estimado INTEGER NOT NULL DEFAULT 0;
+    CREATE TABLE IF NOT EXISTS factura_linea(
+      tipo_doc INTEGER NOT NULL, rut TEXT NOT NULL, folio INTEGER NOT NULL, n INTEGER NOT NULL,
+      descripcion TEXT NOT NULL, cantidad REAL, precio_neto REAL, total_neto INTEGER,
+      PRIMARY KEY(tipo_doc, rut, folio, n));
+    CREATE TABLE IF NOT EXISTS telegram_chat(chat_id INTEGER PRIMARY KEY, nombre TEXT, usuario TEXT, creado TEXT);
+    CREATE TABLE IF NOT EXISTS telegram_codigo(codigo TEXT PRIMARY KEY, usuario TEXT NOT NULL, expira TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS captura(
+      id INTEGER PRIMARY KEY, chat_id INTEGER, usuario TEXT, creado TEXT NOT NULL, estado TEXT NOT NULL,
+      tipo TEXT, datos TEXT NOT NULL, archivo TEXT, resultado TEXT);
+    CREATE TABLE IF NOT EXISTS api_uso(fecha TEXT NOT NULL, tipo TEXT, entrada INTEGER, salida INTEGER);
+    """)
+    # Estimaciones que se reemplazan cuando llega el gasto real del mes por el bot
+    con.execute("UPDATE costo_fijo SET estimado=1 WHERE nombre LIKE 'Cuentas%' OR nombre LIKE 'Sándwiches%'")
+    con.execute("INSERT OR IGNORE INTO parametro VALUES ('rut_empresa', '77618245-1')")
+
+
 # Cada cambio de estructura se agrega al final de esta lista; nunca se edita uno ya publicado.
-MIGRACIONES = [_m1]
+MIGRACIONES = [_m1, _m2]
 
 
 def migrar(con):

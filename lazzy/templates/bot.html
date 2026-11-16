@@ -1,0 +1,25 @@
+{% extends "base.html" %}{% block title %}Bot de Telegram{% endblock %}{% block main %}
+<div class="cab"><h1>Bot de Telegram</h1></div>
+<p class="sub">Por el bot entran las facturas, las cuentas y los archivos de FUDO y del SII, sin abrir el panel. Lo que se guarda ahí aparece aquí al instante.</p>
+<section class="bloque"><h2>Vincular tu Telegram</h2>
+{% if codigo %}<p class="aviso ok">Abre el bot{% if bot_nombre %} <a href="https://t.me/{{bot_nombre}}" target="_blank" rel="noopener">@{{bot_nombre}}</a>{% endif %} y mándale este mensaje: <b style="font-size:20px;letter-spacing:.08em">/vincular {{codigo}}</b><br>El código sirve una sola vez y vence en 30 minutos.</p>
+{% else %}<p class="sub">Cada persona lo hace una vez, desde su propio usuario del panel. Solo los Telegram vinculados pueden usar el bot.</p>{% endif %}
+<form class="fila" method="post"><input type="hidden" name="csrf" value="{{csrf}}"><input type="hidden" name="accion" value="codigo"><button class="btn">Generar código para {{user}}</button></form>
+<div class="tabla" style="max-width:640px;margin-top:16px"><table><tr><th>Telegram vinculado</th><th class="l">Usuario del panel</th><th class="l">Desde</th><th></th></tr>
+{% for c in chats %}<tr><td>{{c.nombre or c.chat_id}}</td><td class="l">{{c.usuario}}</td><td class="l">{{c.creado[:10]}}</td><td><form class="fila" method="post"><input type="hidden" name="csrf" value="{{csrf}}"><input type="hidden" name="accion" value="desvincular"><input type="hidden" name="chat_id" value="{{c.chat_id}}"><button class="btn sec mini" onclick="return confirm('¿Quitarle el acceso al bot a este Telegram?')">Quitar acceso</button></form></td></tr>{% endfor %}
+{% if not chats %}<tr><td colspan="4" class="l">Nadie vinculado todavía.</td></tr>{% endif %}</table></div></section>
+
+<section class="bloque"><h2>Qué se le puede mandar</h2><ul class="pend">
+<li><p><b>Factura en PDF o foto.</b> El bot muestra lo que leyó (proveedor, productos, precios sin IVA) y espera que confirmes. Si un proveedor subió un precio, avisa.</p></li>
+<li><p><b>Cuenta de luz, agua u otra, en foto o escrita</b>, por ejemplo «luz 250730, agua 33209». Ese mes deja de contarse el gasto estimado de esa categoría y se usa el real.</p></li>
+<li><p><b>Excel de FUDO</b> (Ventas y Productos) y <b>CSV de compras del SII</b>: se cargan igual que en «Subir archivos».</p></li>
+<li><p><b>/resumen</b> para ver cómo va la semana, y <b>/deshacer</b> para borrar lo último guardado. Los lunes a las 9:00 el bot manda el resumen solo.</p></li></ul></section>
+
+<section class="bloque"><h2>Lo último que llegó</h2><div class="tabla"><table><tr><th>Fecha</th><th class="l">Quién</th><th class="l">Qué</th><th>Total</th><th class="l">Estado</th></tr>
+{% for c in caps %}<tr><td>{{c.creado[8:10]}}-{{c.creado[5:7]}} {{c.creado[11:16]}}</td><td class="l">{{c.usuario}}</td>
+<td class="l w">{% if c.d.clase == 'gastos' %}{{ c.d.gastos|map(attribute='concepto')|join(', ') }}{% else %}{{c.d.razon_social or c.d.concepto}}{% if c.d.folio %} (folio {{c.d.folio}}){% endif %}{% endif %}</td>
+<td>{% if c.d.clase == 'gastos' %}{{ c.d.gastos|sum(attribute='monto')|clp }}{% else %}{{c.d.total|clp}}{% endif %}</td>
+<td class="l"><span class="st {{ {'guardado':'ok','pendiente':'warn','descartado':'neutro','deshecho':'neutro'}[c.estado] }}">{{ {'guardado':'Guardado','pendiente':'Esperando confirmación','descartado':'Descartado','deshecho':'Deshecho'}[c.estado] }}</span></td></tr>{% endfor %}
+{% if not caps %}<tr><td colspan="5" class="l">Todavía no llega nada por el bot.</td></tr>{% endif %}</table></div></section>
+
+<section class="bloque"><h2>Uso de la API este mes</h2><p class="sub">{{uso.n}} lecturas con Claude Haiku: {{uso.e|num}} tokens de entrada y {{uso.s|num}} de salida. El costo exacto aparece en console.anthropic.com, sección Usage.</p></section>{% endblock %}

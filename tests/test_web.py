@@ -13,7 +13,7 @@ def client(tmp_path):
     set_password(con, "ana", "clave-larga-123")
     con.execute("INSERT INTO venta_hora VALUES ('2026-10-01',9,119000,10)")
     con.execute("INSERT INTO venta_producto VALUES ('2026-10-01','Café','Latte',10,35000)")
-    con.execute("INSERT INTO compra VALUES ('2026-10',33,'1-9','CAFE SA',1,'2026-10-02',0,20000,3800,0,23800,0,NULL)")
+    con.execute("INSERT INTO compra VALUES ('2026-10',33,'1-9','CAFE SA',1,'2026-10-02',0,20000,3800,0,23800,0,NULL,'sii')")
     con.commit()
     return TestClient(web.app, follow_redirects=False), con
 
@@ -37,7 +37,7 @@ def test_paginas_y_edicion(tmp_path):
     c, con = client(tmp_path)
     csrf = login(c)
     for url in ("/?periodo=2026-10", "/resultados", "/productos", "/insumos", "/compras", "/costos-fijos",
-                "/impuestos", "/cargar", "/receta?p=Latte", "/ayuda", "/?periodo=1999-01"):
+                "/impuestos", "/cargar", "/receta?p=Latte", "/ayuda", "/bot", "/?periodo=1999-01"):
         assert c.get(url).status_code == 200, url
     inicio = c.get("/?periodo=2026-10").text
     assert "proveedores sin categoría" in inicio and "Facturas sin categoría" in inicio

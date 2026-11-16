@@ -7,3 +7,4 @@ git pull -q --ff-only
 [ "$old" = "$(git rev-parse HEAD)" ] && exit 0
 .venv/bin/pip install -q -r requirements.txt
 sudo systemctl restart lazzy-panel
+if systemctl is-active -q lazzy-bot; then sudo systemctl restart lazzy-bot; fi

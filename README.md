@@ -21,11 +21,15 @@ uvicorn lazzy.web:app --port 8765
 ```
 Servidor: `sudo sh deploy/install.sh panel.lazzycoffee.cl` (Ubuntu + Caddy + systemd; se actualiza solo desde GitHub cada 5 min).
 
+## Bot de Telegram
+`sudo sh deploy/install_bot.sh` pide el token y la clave de Anthropic (modelo por defecto: `claude-haiku-5-5`, cambiable con `LAZZY_MODELO`).
+Cada persona se vincula desde el panel, página «Bot de Telegram».
+
 ## Estado
 - [x] Fase 1: base de datos, importadores FUDO/SII, estado de resultados, IVA, punto de equilibrio
 - [x] Fase 1b: ventas por producto + costos -> margen por producto
 - [x] Fase 2: panel web con login (resumen, resultados, productos y recetas, insumos, compras, costos fijos, impuestos, carga de archivos)
 - [x] Fase 2b: rediseño con la marca, lenguaje simple, ayudas «?», veredicto del mes, desglose por cada $1.000, pendientes y mapa de productos
 - [x] Fase 2c: compras por fecha del documento, comisión de tarjetas (facturada o estimada), historial de costos, migraciones, respaldos diarios
-- [ ] Fase 3: bot de Telegram (facturas, cierre diario, alertas)
+- [x] Fase 3: bot de Telegram (facturas PDF/foto, cuentas escritas, archivos FUDO/SII, avisos de precio, resumen semanal)
 - [ ] Fase 4: sincronización API FUDO (requiere Plan Pro)

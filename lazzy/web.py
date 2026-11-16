@@ -68,7 +68,7 @@ def tip(clave):
 T.env.globals.update(tip=tip, G=GLOSARIO, CATS_UI=CATEGORIAS_UI, GRUPOS=GRUPO_NOMBRE)
 NAV = [("Ver", [("/", "Inicio"), ("/decisiones", "Decisiones"), ("/resultados", "Mes a mes"), ("/productos", "Productos"),
                  ("/impuestos", "IVA")]),
-       ("Actualizar", [("/cargar", "Subir archivos"), ("/compras", "Facturas y proveedores"),
+       ("Actualizar", [("/bot", "Bot de Telegram"), ("/cargar", "Subir archivos"), ("/compras", "Facturas y proveedores"),
                        ("/insumos", "Insumos y precios"), ("/costos-fijos", "Gastos fijos")]),
        ("", [("/ayuda", "Ayuda")])]
 _con = None
@@ -309,7 +309,8 @@ def compras(request: Request):
         "SELECT c.rut, MAX(c.razon_social) nombre, p.categoria cat, COUNT(*) n, "
         "SUM(CASE WHEN c.tipo_doc=61 THEN -c.neto ELSE c.neto END) neto "
         "FROM compra c LEFT JOIN proveedor p ON p.rut=c.rut GROUP BY c.rut ORDER BY (p.categoria IS NOT NULL), neto DESC")]
-    return page(request, "compras.html", rows=rows, prov=prov, per=per, pers=pers)
+    gastos = [dict(r) for r in con.execute("SELECT * FROM gasto_manual ORDER BY fecha DESC, id DESC LIMIT 60")]
+    return page(request, "compras.html", rows=rows, prov=prov, per=per, pers=pers, gastos=gastos)
 
 
 @app.post("/compras/proveedor")
@@ -350,13 +351,13 @@ async def costos_fijos_post(request: Request):
         con.execute("DELETE FROM costo_fijo WHERE id=?", (int(f["id"]),))
     else:
         vals = (str(f["nombre"]).strip(), str(f["categoria"]), int(str(f["monto"]).replace(".", "")),
-                str(f["desde"]), str(f.get("hasta") or "") or None)
+                str(f["desde"]), str(f.get("hasta") or "") or None, 1 if f.get("estimado") else 0)
         if vals[1] not in F.CATEGORIAS:
             raise HTTPException(400, "Categoría inválida")
         if f.get("id"):
-            con.execute("UPDATE costo_fijo SET nombre=?, categoria=?, monto=?, desde=?, hasta=? WHERE id=?", (*vals, int(f["id"])))
+            con.execute("UPDATE costo_fijo SET nombre=?, categoria=?, monto=?, desde=?, hasta=?, estimado=? WHERE id=?", (*vals, int(f["id"])))
         else:
-            con.execute("INSERT INTO costo_fijo(nombre,categoria,monto,desde,hasta) VALUES (?,?,?,?,?)", vals)
+            con.execute("INSERT INTO costo_fijo(nombre,categoria,monto,desde,hasta,estimado) VALUES (?,?,?,?,?,?)", vals)
     con.commit()
     return RedirectResponse("/costos-fijos", 303)
 
@@ -389,6 +390,42 @@ def decisiones(request: Request):
     return page(request, "decisiones.html", dias=dias, mapa=mapa, est=A.estimacion(con), precios=precios,
                 tend=tend, rec=A.recomendaciones(dias, mapa, precios, tend), desde=desde, hasta=hasta,
                 ini=A.ventanas(con)[0])
+
+
+@app.get("/bot", response_class=HTMLResponse)
+def bot_pagina(request: Request):
+    u = user(request)
+    con = db()
+    mes = date.today().strftime("%Y-%m")
+    uso = con.execute("SELECT COUNT(*) n, COALESCE(SUM(entrada),0) e, COALESCE(SUM(salida),0) s FROM api_uso "
+                      "WHERE fecha >= ?", (mes + "-01",)).fetchone()
+    caps = [dict(r) | {"d": json.loads(r["datos"])} for r in con.execute(
+        "SELECT * FROM captura ORDER BY id DESC LIMIT 25")]
+    return page(request, "bot.html", codigo=request.session.pop("codigo", None), uso=dict(uso),
+                chats=[dict(r) for r in con.execute("SELECT * FROM telegram_chat ORDER BY creado")], caps=caps,
+                bot_nombre=os.environ.get("LAZZY_BOT_NOMBRE", ""))
+
+
+@app.post("/bot")
+async def bot_post(request: Request):
+    f = await form(request)
+    con = db()
+    if f.get("accion") == "codigo":
+        from .bot import nuevo_codigo
+        request.session["codigo"] = nuevo_codigo(con, request.session["user"])
+    elif f.get("accion") == "desvincular":
+        con.execute("DELETE FROM telegram_chat WHERE chat_id=?", (int(f["chat_id"]),))
+        con.commit()
+    return RedirectResponse("/bot", 303)
+
+
+@app.post("/gastos/borrar")
+async def gasto_borrar(request: Request):
+    f = await form(request)
+    con = db()
+    con.execute("DELETE FROM gasto_manual WHERE id=?", (int(f["id"]),))
+    con.commit()
+    return RedirectResponse("/compras", 303)
 
 
 @app.get("/ayuda", response_class=HTMLResponse)

@@ -40,6 +40,7 @@ GLOSARIO = {
     "extra_mes": ("Ganancia extra al mes", "Cuánto más ganarías al mes con el cambio, si se vendiera la misma cantidad que hoy. Es un máximo: si subes el precio puede que se venda algo menos."),
     "comision_tarjetas": ("Comisión de tarjetas", "Lo que cobra Transbank por cada venta con tarjeta. No te llega una cuenta para pagar: Transbank lo descuenta de lo que te deposita y emite facturas electrónicas a nombre de la empresa, que aparecen en el registro de compras del SII. La comisión de débito es más baja que la de crédito."),
     "comision_estimada": ("Comisión estimada", "Transbank factura a fin de mes. Mientras no llegue esa factura, el panel calcula la comisión con la tasa: la que pongas en Gastos fijos para débito y crédito, o si no la pones, la tasa promedio de las facturas de Transbank de los últimos 3 meses. Cuando llega la factura real, se usa la real."),
+    "estimado": ("Gasto estimado", "Un monto aproximado que se usa mientras no llegue el gasto real. Si en un mes registras gastos reales de la misma categoría (por ejemplo, mandas la cuenta de luz al bot), ese mes el estimado deja de contarse y se usa el real."),
     "nota_credito": ("Nota de crédito", "Documento con que un proveedor anula o descuenta una factura. Se resta de las compras."),
     "gasto_fijo": ("Gasto fijo", "Un gasto que se repite todos los meses por un monto parecido y que no llega como factura al SII: sueldos, imposiciones, cuentas a nombre de una persona, compras sin factura."),
 }

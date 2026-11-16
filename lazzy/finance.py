@@ -38,6 +38,8 @@ def seed_from_config(con, cfg):
     """Carga inicial de parámetros desde el toml. No pisa lo ya editado en el panel."""
     for k in ("iva", "ppm_tasa"):
         con.execute("INSERT OR IGNORE INTO parametro VALUES (?,?)", (k, str(cfg["empresa"].get(k, 0))))
+    if cfg["empresa"].get("rut"):
+        con.execute("INSERT OR IGNORE INTO parametro VALUES ('rut_empresa', ?)", (cfg["empresa"]["rut"],))
     for rut, cat in cfg.get("proveedores", {}).items():
         con.execute("INSERT OR IGNORE INTO proveedor(rut, categoria) VALUES (?,?)", (rut, cat))
     if not con.execute("SELECT 1 FROM costo_fijo LIMIT 1").fetchone():
@@ -162,10 +164,14 @@ def compras_por_categoria(con, periodo, cfg):
     return dict(out), detalle_sin
 
 
-def costos_fijos(cfg, periodo):
+def costos_fijos(cfg, periodo, reales=()):
+    """Gastos fijos del mes. Los marcados como estimados no cuentan si ese mes ya hay gastos reales
+    de la misma categoría (por ejemplo, la cuenta de luz mandada al bot)."""
     out = defaultdict(int)
     for c in cfg.get("costo_fijo", []):
         if c["desde"] <= periodo and periodo <= c.get("hasta", "9999-12"):
+            if c.get("estimado") and c["categoria"] in reales:
+                continue
             out[c["categoria"]] += c["monto"]
     return dict(out)
 
@@ -184,7 +190,9 @@ def iva_mes(con, periodo, cfg):
 def pnl_mes(con, periodo, cfg):
     v = ventas_mes(con, periodo, cfg["empresa"]["iva"])
     cats, sin = compras_por_categoria(con, periodo, cfg)
-    for k, m in costos_fijos(cfg, periodo).items():
+    reales = {r[0] for r in con.execute("SELECT DISTINCT categoria FROM gasto_manual WHERE fecha >= ? AND fecha < ?",
+                                         mes_rango(periodo))}
+    for k, m in costos_fijos(cfg, periodo, reales).items():
         cats[k] = cats.get(k, 0) + m
     com = comision_mes(con, periodo, cfg)
     if com["estimada"]:
