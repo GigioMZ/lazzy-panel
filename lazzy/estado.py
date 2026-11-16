@@ -127,6 +127,35 @@ def puente(con, cfg, periodo, ps, n=3):
     return {"filas": filas, "total": tot, "alerta": len(filas) >= 3 and tot["dif_pct"] is not None and tot["dif_pct"] > 5}
 
 
+def pagos_fuera(con):
+    """Lo que se paga fuera del estado de resultados y aun así sale del negocio (por ejemplo, el pago de Tupaj)."""
+    fuera = {r["persona"] for r in con.execute("SELECT DISTINCT persona FROM turno WHERE en_resultado=0")}
+    return {r["clave"][5:]: int(float(r["valor"])) for r in con.execute("SELECT * FROM parametro WHERE clave LIKE 'pago_%'")
+            if r["clave"][5:] in fuera}
+
+
+def caja(con, cfg, periodo):
+    """Plata que entró y salió en el mes, aproximada: sirve para comparar con la cuenta del banco. No es la utilidad:
+    aquí cuentan las compras con IVA cuando se compran, el F29 que se paga ese mes y lo que se paga por fuera."""
+    a, b = mes_rango(periodo)
+    p = F.pnl_mes(con, periodo, cfg)
+    entra = p["ventas"]["bruto"]
+    compras = con.execute("SELECT COALESCE(SUM(CASE WHEN tipo_doc=61 THEN -total ELSE total END),0) FROM compra "
+                          "WHERE fecha_doc >= ? AND fecha_doc < ?", (a, b)).fetchone()[0]
+    sin_factura = con.execute("SELECT COALESCE(SUM(neto),0) FROM gasto_manual WHERE fecha >= ? AND fecha < ?", (a, b)).fetchone()[0]
+    reales = {r[0] for r in con.execute("SELECT DISTINCT categoria FROM gasto_manual WHERE fecha >= ? AND fecha < ?", (a, b))}
+    fijos = sum(F.costos_fijos(cfg, periodo, reales).values())
+    ant = menos(periodo, 1)
+    f29 = con.execute("SELECT total FROM f29 WHERE periodo=?", (ant,)).fetchone()
+    iva = f29[0] if f29 else F.iva_mes(con, ant, cfg)["f29_estimado"]
+    fuera = sum(pagos_fuera(con).values())
+    filas = [("Ventas cobradas, con IVA", entra), ("Facturas de compras, con IVA (insumos, servicios, equipos, Transbank)", -compras),
+             ("Sueldos, imposiciones y gastos sin factura", -(fijos + sin_factura)), (f"F29 de {ant} (se paga este mes)", -iva)]
+    if fuera:
+        filas.append(("Pagos por fuera (" + ", ".join(pagos_fuera(con)) + ")", -fuera))
+    return {"filas": filas, "queda": sum(m for _, m in filas), "fuera": fuera, "f29_real": bool(f29), "completo": p["tiene_compras"]}
+
+
 def composicion(p):
     """De cada $1.000 vendidos, cuánto se fue a cada grupo y cuánto quedó (para la barra de arriba)."""
     n = p["ventas"]["neto"]

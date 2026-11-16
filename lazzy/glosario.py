@@ -76,6 +76,7 @@ GLOSARIO = {
     "margen_turno": ("Margen que dejó su turno", "La venta sin IVA de las horas en que estuvo esta persona, menos lo que costaron esos productos (el % de costo de lo vendido del período). Si es mayor que lo que cuesta la persona, su turno se paga solo y aporta a los gastos del local y a la ganancia."),
     "ventas_n": ('Cantidad de ventas', 'Cuántas ventas (boletas o tickets) registró FUDO en el período. Es lo más parecido a la cantidad de clientes atendidos.'),
     "insumos_cat": ('Insumos', 'Lo que compran para preparar o vender: café, leche, pastelería, vasos. Se ve en las compras de cada mes.'),
+    "caja": ("Caja del mes", "Lo que entró por ventas menos lo que se pagó: facturas con IVA, sueldos, gastos sin factura, el F29 y lo que se paga por fuera. Puede ser muy distinto de la utilidad: comprar stock, pagar IVA o comprar un equipo saca plata de la cuenta sin ser un costo del mes."),
 }
 
 # Nombres legibles de las categorías, agrupadas como aparecen en los selectores.

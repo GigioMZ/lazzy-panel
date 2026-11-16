@@ -52,6 +52,7 @@
 {% set pc = (c.pct.prime_cost * 10)|round|int %}
 <div><dt>Costo de lo vendido + sueldos, por cada $1.000 {{tip('insumos_sueldos')}}</dt><dd>{{pc|clp}} <span class="st {{'ok' if pc <= 600 else ('warn' if pc <= 650 else 'bad')}}">{{'bien' if pc <= 600 else ('justo' if pc <= 650 else 'alto')}}</span> <span class="nota">sano: hasta $600</span></dd></div>
 <div><dt>Venta mínima por día {{tip('equilibrio')}}</dt><dd>{{c.equilibrio.venta_bruta_dia|clp}} <span class="nota">con IVA, para no perder</span></dd></div>
+{% if eq.dia_fuera %}<div><dt>Venta mínima contando pagos por fuera</dt><dd>{{eq.dia_fuera|clp}} <span class="nota">con IVA, sumando {{eq.fuera|clp}} al mes</span></dd></div>{% endif %}
 <div><dt>Venta promedio por día</dt><dd>{{ (c.ventas.bruto / c.ventas.dias_abiertos)|round|int|clp if c.ventas.dias_abiertos }} <span class="nota">con IVA, en {{c.ventas.dias_abiertos}} días abiertos</span></dd></div>
 <div><dt>Cantidad de ventas {{tip('ventas_n')}}</dt><dd>{{c.ventas.tickets|num}} <span class="nota">{{ (c.ventas.tickets / c.ventas.dias_abiertos)|round|int if c.ventas.dias_abiertos }} por día</span></dd></div>
 <div><dt>Promedio por venta {{tip('ticket')}}</dt><dd>{{c.ventas.ticket_promedio|clp}} <span class="nota">con IVA</span></dd></div>
@@ -60,6 +61,16 @@
 <div class="panel"><h2>Resultado de cada mes</h2><p class="sub">Ganancia o pérdida operacional. Los meses sin facturas del SII no aparecen.</p>
 <div class="grafico" style="height:230px"><canvas id="gRes" role="img" aria-label="Resultado operacional por mes"></canvas></div></div>
 </section>
+<section class="bloque"><h2>Cómo se calcula la venta mínima</h2>
+<p class="sub">Cada $1.000 vendidos sin IVA dejan ${{ (eq.mc * 10)|round|int }} después de pagar lo que costó lo vendido ({{c.pct.costo_venta|pct(0)}}) y la comisión de tarjetas. Los gastos fijos del mes (sueldos {{c.personal|clp}} y gastos del local {{(eq.fijos - c.personal)|clp}}) suman {{eq.fijos|clp}}. Para cubrirlos hay que vender {{c.equilibrio.venta_neta_mes|clp}} sin IVA al mes: {{c.equilibrio.venta_bruta_dia|clp}} con IVA por cada uno de los {{c.equilibrio.dias_mes}} días abiertos del mes. Todo lo que se venda sobre eso es ganancia.</p>
+{% if not eq.fuera %}<p class="aviso">Ojo: el cálculo solo conoce los gastos que están en el panel. No incluye el pago de Tupaj (se anota en <a href="/turnos">Turnos</a>), lo que retiran los socios, ni gastos pagados con tarjeta o boleta que nunca llegaron al panel. Si sienten que con suerte cubren los gastos, la diferencia está en esas cosas: mírenla en la caja de abajo.</p>{% endif %}</section>
+
+<section class="bloque"><h2>Caja del mes, aproximada {{tip('caja')}}</h2>
+<p class="sub">No es la utilidad: es la plata que debería haber entrado y salido de la cuenta en {{per|mesl}}. Compárenla con el banco: si en la cuenta quedó bastante menos, hay pagos que el panel no conoce.</p>
+<div class="tabla" style="max-width:720px"><table>{% for n, m in caja.filas %}<tr><td class="l">{{n}}</td><td>{{m|clp}}</td></tr>{% endfor %}
+<tr class="fuerte"><td class="l">Debería quedar en caja</td><td>{{caja.queda|clp}}</td></tr></table></div>
+<p class="nota">{% if not caja.f29_real %}El F29 es el estimado del panel; mándale al bot el real. {% endif %}Las cuentas de luz y agua usan el estimado si no llegaron. No incluye retiros de los socios ni pagos de créditos.</p></section>
+
 <p class="nota"><a href="/resultados?vista=tabla">Ver varios meses lado a lado</a></p>
 {% endblock %}
 {% block js %}<script src="/static/chart.umd.js"></script><script>

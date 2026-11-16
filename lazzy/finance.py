@@ -285,8 +285,8 @@ def pnl_mes(con, periodo, cfg):
     costos_mes = cfg if cfg.get("_fecha") == fin_de_mes(periodo) else dict(cfg, costo_producto=load_cfg(con, fin_de_mes(periodo))["costo_producto"])
     cvd = costo_vendido(con, a, fin_de_mes(periodo), costos_mes)
     escala = v["neto"] / cvd["venta_productos"] if cvd["venta_productos"] and abs(cvd["venta_productos"] - v["neto"]) > 0.02 * v["neto"] else 1
-    from .stock import merma_mes
-    merma = merma_mes(con, periodo, costos_mes)
+    from .stock import merma_anotada, merma_mes
+    merma = merma_mes(con, periodo, costos_mes) + merma_anotada(con, periodo, costos_mes)
     lineas["costo_venta"] = {k: round(c * escala) for k, c in sorted(cvd["por_categoria"].items(), key=lambda x: -x[1]) if round(c * escala)}
     if merma:
         lineas["costo_venta"]["Merma y ajustes de stock"] = merma
@@ -298,6 +298,13 @@ def pnl_mes(con, periodo, cfg):
     margen_bruto = n - cv
     resultado = margen_bruto - pers - gop - sc     # "inversion" (activo fijo) no resta al resultado
     fijos = pers + sum(m for c, m in lineas.get("gasto_operacional", {}).items() if c != "comision_tarjetas")
+    # días abiertos del mes completo: en un mes en curso, se proyectan con los días transcurridos
+    dias = v["dias_abiertos"]
+    ult = con.execute("SELECT MAX(fecha) FROM venta_hora WHERE fecha >= ? AND fecha < ?", mes_rango(periodo)).fetchone()[0]
+    fin = fin_de_mes(periodo)
+    if ult and ult < fin and dias:
+        pasados = int(ult[8:10])
+        dias = round(dias * int(fin[8:10]) / pasados)
     mc = 1 - (cv + lineas.get("gasto_operacional", {}).get("comision_tarjetas", 0)) / n if n else 0
     return {
         "periodo": periodo, "ventas": v, "lineas": {g: dict(d) for g, d in lineas.items()},
@@ -309,8 +316,8 @@ def pnl_mes(con, periodo, cfg):
         "pct": {"costo_venta": pct(cv), "margen_bruto": pct(margen_bruto), "personal": pct(pers),
                 "prime_cost": pct(cv + pers), "gasto_operacional": pct(gop), "resultado": pct(resultado)},
         "equilibrio": {"venta_neta_mes": round(fijos / mc) if mc > 0 else None,
-                       "venta_bruta_dia": round(fijos / mc * (1 + cfg["empresa"]["iva"]) / v["dias_abiertos"])
-                       if mc > 0 and v["dias_abiertos"] else None},
+                       "venta_bruta_dia": round(fijos / mc * (1 + cfg["empresa"]["iva"]) / dias)
+                       if mc > 0 and dias else None, "dias_mes": dias},
         "iva": iva_mes(con, periodo, cfg), "comision": com,
     }
 

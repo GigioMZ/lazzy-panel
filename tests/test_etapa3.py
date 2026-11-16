@@ -85,8 +85,8 @@ def test_alertas_dia_bajo_y_factura_faltante():
     con.execute("INSERT INTO venta_hora(fecha,hora,bruto,tickets) VALUES ('2026-11-11',10,90000,4)")
     con.execute("INSERT INTO proveedor(rut,nombre,categoria) VALUES ('2-7','LECHE SA','leche')")
     for i, f in enumerate(("2026-09-20", "2026-09-27", "2026-10-04", "2026-10-11", "2026-10-18")):
-        con.execute("INSERT INTO compra VALUES (?,33,'2-7','LECHE SA',?,?,0,1000,190,0,1190,0,NULL,'sii')", (f[:7], i, f))
-    con.execute("INSERT INTO compra VALUES ('2026-11',33,'9-9','OTRO',1,'2026-11-14',0,1000,190,0,1190,0,NULL,'bot')")
+        con.execute("INSERT INTO compra VALUES (?,33,'2-7','LECHE SA',?,?,0,1000,190,0,1190,0,NULL,'sii',NULL)", (f[:7], i, f))
+    con.execute("INSERT INTO compra VALUES ('2026-11',33,'9-9','OTRO',1,'2026-11-14',0,1000,190,0,1190,0,NULL,'bot',NULL)")
     t = AL.revisar(con, hoy)
     assert any("miércoles 11/11" in x for x in t) and any("LECHE SA cada 7 días" in x for x in t)
     assert AL.revisar(con, hoy) == []                      # no repite
@@ -154,7 +154,7 @@ def test_stock_suma_facturas_resta_ventas_y_mide_merma():
     for f, p, q, b in (("2026-11-03", "Brownies", 8, 19920), ("2026-11-04", "Cappu + Brownie", 2, 8980), ("2026-11-04", "Cappuccino", 1, 3490)):
         con.execute("INSERT INTO venta_producto(fecha,categoria,producto,cantidad,bruto) VALUES (?,?,?,?,?)", (f, "Pasteleria", p, q, b))
     con.execute("INSERT INTO venta_hora(fecha,hora,bruto,tickets) VALUES ('2026-11-03',10,32390,5)")
-    con.execute("INSERT INTO compra VALUES ('2026-11',33,'1-9','CAKE',5,'2026-11-02',0,20000,3800,0,23800,0,NULL,'bot')")
+    con.execute("INSERT INTO compra VALUES ('2026-11',33,'1-9','CAKE',5,'2026-11-02',0,20000,3800,0,23800,0,NULL,'bot',NULL)")
     con.execute("INSERT INTO factura_linea VALUES (33,'1-9',5,0,'brownie nuez',20,1000,20000,'Brownie Nuez')")
     con.execute("INSERT INTO vinculo VALUES ('1-9','brownie nuez','producto','Brownies',1)")
     con.execute("INSERT INTO proveedor(rut,nombre,categoria) VALUES ('1-9','CAKE','pasteleria')")
@@ -232,9 +232,9 @@ def test_stock_por_bot_llegadas_y_sugerencias(tmp_path):
     bot.procesar({"message": {"chat": {"id": 7}, "document": {"file_id": "x", "file_name": "stock.xlsx"}}})
     assert "Guardé el stock de 3 productos" in tg.env[-1] and "Es el primero" in tg.env[-1]
     bot.procesar({"message": {"chat": {"id": 7}, "text": "llegaron 10 ciabatta jamon queso y 6 salame"}})
-    assert "+10 Ciabatta Jamon queso (ahora debería haber 12)" in tg.env[-1] and "+6 Ciabatta Salame Queso (ahora debería haber 12)" in tg.env[-1]
+    assert "+10 Ciabatta Jamon queso: ahora deberían quedar 12" in tg.env[-1] and "+6 Ciabatta Salame Queso: ahora deberían quedar 12" in tg.env[-1]
     bot.procesar({"message": {"chat": {"id": 7}, "text": "llegaron 3 tortas de mazapan"}})
-    assert "No encontré esos productos" in tg.env[-1]
+    assert "No encontré «tortas de mazapan»" in tg.env[-1]
     con.execute("INSERT INTO factura_linea VALUES (33,'1-9',5,0,'brownies nuez',12,1252,15024,'Brownies Nuez')")
     s = ST.sugerencias(con)
     assert [(x["producto"], x["clave"]) for x in s] == [("Brownies", "brownies nuez")]

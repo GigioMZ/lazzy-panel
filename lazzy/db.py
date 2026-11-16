@@ -161,7 +161,12 @@ def _m7(con):
     """)
 
 
-MIGRACIONES = [_m1, _m2, _m3, _m4, _m5, _m6, _m7]
+def _m8(con):
+    """Hora en que el bot guardó cada factura (para ordenarla contra un conteo de stock del mismo día)."""
+    con.execute("ALTER TABLE compra ADD COLUMN creado TEXT")
+
+
+MIGRACIONES = [_m1, _m2, _m3, _m4, _m5, _m6, _m7, _m8]
 
 
 def migrar(con):

@@ -109,11 +109,21 @@ def servicios(con, hoy):
     return out
 
 
+def stock_bajo(con, hoy):
+    """Productos que quedaron bajo su mínimo (una vez por producto y día)."""
+    from . import stock as ST
+    bajos = [x for x in ST.bajo_minimo(con, F.load_cfg(con), hoy) if _nuevo(con, f"stock:{x['producto']}:{hoy}")]
+    if not bajos:
+        return []
+    return ["📦 Bajo el stock mínimo: " + ", ".join(f"{x['producto']} ({x['esperado']:g}, mínimo {x['minimo']:g})" for x in bajos)
+            + ". Si ya llegó el pedido, mándame la factura o escribe «llegaron N producto»."]
+
+
 def revisar(con, hoy=None):
     """Corre todos los avisos y los deja en la cola del bot. Devuelve los textos nuevos."""
     hoy = hoy or date.today()
     textos = []
-    for fn in (alzas, dias_bajos, facturas_faltantes, metas, servicios):
+    for fn in (alzas, dias_bajos, facturas_faltantes, metas, servicios, stock_bajo):
         try:
             textos += fn(con, hoy)
         except Exception as e:  # un aviso que falla no detiene los demás

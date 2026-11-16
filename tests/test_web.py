@@ -13,7 +13,7 @@ def client(tmp_path):
     set_password(con, "ana", "clave-larga-123")
     con.execute("INSERT INTO venta_hora VALUES ('2026-10-01',9,119000,10)")
     con.execute("INSERT INTO venta_producto VALUES ('2026-10-01','Café','Latte',10,35000)")
-    con.execute("INSERT INTO compra VALUES ('2026-10',33,'1-9','CAFE SA',1,'2026-10-02',0,20000,3800,0,23800,0,NULL,'sii')")
+    con.execute("INSERT INTO compra VALUES ('2026-10',33,'1-9','CAFE SA',1,'2026-10-02',0,20000,3800,0,23800,0,NULL,'sii',NULL)")
     con.commit()
     return TestClient(web.app, follow_redirects=False), con
 

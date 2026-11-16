@@ -35,15 +35,21 @@ AYUDA = """Hola, soy el bot de Lazzy. Me puedes mandar:
 • Cuentas (luz, agua, etc.) en foto, o escritas: "luz 250730, agua 33209".
 • Los Excel de FUDO (Ventas, Productos y Stock) y el CSV de compras del SII: los cargo al panel.
 • El F29 en PDF: lo guardo y lo comparo con lo que estimó el panel.
-• Llegadas sin factura (sándwiches): "llegaron 10 ciabatta jamón queso y 6 salame".
+• Stock:
+  - Llegadas sin factura (sándwiches): "llegaron 10 ciabatta jamón queso y 6 salame".
+  - Ajustes después de contar: "quedan 12 brownies" o "hay 5 tiramisú y 8 carrot cake".
+  - Merma: "se botaron 2 tiramisú por vencidos" o "merma 1 cheesecake berries".
+  - Con cada factura de un producto vinculado te digo cuánto debería quedar.
 • Preguntas: "¿cuánto vendimos la semana pasada?", "¿qué producto deja menos?", "¿cómo va el mes contra la meta?".
 
 Además te aviso solo si un proveedor sube un precio, si un día vendió muy bajo lo normal, si no llega la factura de
-un proveedor habitual, o si el mes va bajo la meta.
+un proveedor habitual, si el mes va bajo la meta o si algo queda bajo su stock mínimo.
 
 Comandos:
 /resumen: cómo va la semana
-/deshacer: borra lo último que guardé (la factura, su detalle y los costos que cambió)
+/mes: cómo va el mes y a cuánto va a cerrar
+/stock: qué debería haber hoy, y lo que está bajo el mínimo
+/deshacer: borra lo último que guardé (una factura con sus costos, un gasto o un movimiento de stock)
 Antes de guardar una factura puedes tocar «Corregir cantidad o precio» para arreglar un producto.
 /ayuda: este mensaje
 
@@ -156,6 +162,10 @@ class Bot:
                 return self.tg.enviar(chat, resumen_semana(self.con))
             if texto == "/deshacer":
                 return self.tg.enviar(chat, self.deshacer(chat))
+            if texto == "/stock":
+                return self.tg.enviar(chat, texto_stock(self.con))
+            if texto in ("/mes", "/hoy"):
+                return self.tg.enviar(chat, resumen_mes(self.con))
             if m.get("document"):
                 return self.documento(chat, usuario, m["document"])
             if m.get("photo"):
@@ -166,9 +176,9 @@ class Bot:
                 return self.proponer(chat, usuario, C.leer_imagen(self.con, datos), ruta)
             if texto:
                 self.tg("sendChatAction", chat_id=chat, action="typing")
-                lleg = ST.parsear_llegada(self.con, texto)
-                if lleg is not None:
-                    return self.tg.enviar(chat, self.llegada(lleg, usuario))
+                st = ST.parsear_stock(self.con, texto)
+                if st is not None:
+                    return self.tg.enviar(chat, self.stock_msg(chat, st, usuario))
                 if P.es_pregunta(texto):
                     return self.tg.enviar(chat, P.responder(self.con, texto, hoy=datetime.now(ZONA).date()))
                 d = C.leer_texto(self.con, texto, hoy=datetime.now(ZONA).date())
@@ -235,18 +245,44 @@ class Bot:
             return self.tg.enviar(chat, f"Cargué {r['documentos']} documentos de compra del SII de {I.mes_largo(per)}.\n\n" + estado_datos(self.con))
         return self.tg.enviar(chat, "No sé qué hacer con ese tipo de archivo. Mándame PDF, foto, Excel de FUDO o CSV del SII.")
 
-    def llegada(self, lleg, usuario):
-        if not lleg["items"]:
-            return ("No encontré esos productos en el stock. Escribe el nombre como está en FUDO, por ejemplo "
-                    "«llegaron 10 ciabatta jamón queso».")
-        for p, n in lleg["items"]:
-            ST.registrar_llegada(self.con, p, n, datetime.now(ZONA).date().isoformat(), origen=f"bot ({usuario})")
+    def stock_msg(self, chat, st, usuario):
+        """Llegada sin factura, ajuste de stock («quedan 12 brownies») o merma («se botaron 2 tiramisú por vencidos»)."""
+        if not st["items"]:
+            return ("No encontré " + (", ".join(f"«{x}»" for x in st["faltan"]) or "esos productos") + " en el stock. Escribe el nombre como "
+                    "está en FUDO, por ejemplo «llegaron 10 ciabatta jamón queso», «quedan 12 brownies» o «merma 2 tiramisú».")
+        hoy = datetime.now(ZONA).date()
+        ref, lineas = {"tipo": "stock", "entradas": [], "conteos": []}, []
         cfg = F.load_cfg(self.con)
-        est = {x["producto"]: x for x in ST.estado(self.con, cfg, datetime.now(ZONA).date())}
-        txt = "Anoté en el stock:\n" + "\n".join(f"• +{n:g} {p} (ahora debería haber {est[p]['esperado']:g})" for p, n in lleg["items"])
-        if lleg["faltan"]:
-            txt += "\nNo reconocí: " + ", ".join(lleg["faltan"])
-        return txt + "\n\nSi me equivoqué, se borra en https://panel.lazzycoffee.cl/stock"
+        for p, n in st["items"]:
+            if st["tipo"] == "ajuste":
+                antes = ST.ajustar(self.con, p, n, hoy.isoformat(), corte_ahora_cl())
+                ref["conteos"].append([hoy.isoformat(), p])
+                dif = n - antes if antes is not None else 0
+                costo = (cfg["costo_producto"].get(p) or {}).get("costo")
+                extra = "" if abs(dif) < 1 else (f" Esperaba {antes:g}: {'faltan' if dif < 0 else 'sobran'} {abs(dif):g}"
+                                                 + (f" ({I.clp(round(abs(dif) * costo))} {'de merma' if dif < 0 else ''})".replace(" )", ")") if costo else "") + ".")
+                lineas.append(f"• {p}: quedan {n:g}.{extra}")
+            else:
+                signo = 1 if st["tipo"] == "llegada" else -1
+                origen = f"bot ({usuario})" if signo > 0 else f"merma bot ({usuario})"
+                ref["entradas"].append(ST.registrar_llegada(self.con, p, signo * n, hoy.isoformat(), st["motivo"], origen))
+        est = {x["producto"]: x for x in ST.estado(self.con, F.load_cfg(self.con), hoy)}
+        if st["tipo"] != "ajuste":
+            for p, n in st["items"]:
+                e = est[p]
+                lineas.append(f"• {'+' if st['tipo'] == 'llegada' else '-'}{n:g} {p}: ahora deberían quedar {e['esperado']:g}"
+                              + (" ⚠️ bajo el mínimo" if e["bajo"] else ""))
+        titulo = {"llegada": "Anoté la llegada", "ajuste": "Ajusté el stock", "merma": "Anoté la merma"}[st["tipo"]]
+        if st["tipo"] == "merma" and st["motivo"]:
+            titulo += f" ({st['motivo']})"
+        txt = titulo + ":\n" + "\n".join(lineas)
+        if st["faltan"]:
+            txt += "\nNo reconocí: " + ", ".join(st["faltan"])
+        self.con.execute("INSERT INTO captura(chat_id,usuario,creado,estado,tipo,datos,resultado) VALUES (?,?,?,?,?,?,?)",
+                         (chat, usuario, datetime.now().isoformat(timespec="seconds"), "guardado", "stock",
+                          json.dumps({"clase": "stock", "texto": txt}, ensure_ascii=False), json.dumps(ref)))
+        self.con.commit()
+        return txt + "\n\nSi algo quedó mal: /deshacer, o escribe «quedan N producto» para corregir."
 
     def f29(self, datos):
         d = IVA.leer_f29(self.con, datos)
@@ -329,7 +365,15 @@ class Bot:
                 return self.tg.editar(chat, msg, C.resumen_propuesta(d) + f"\n\nNo se guardó: {e}", botones_confirmar(cid, d))
             self.con.execute("UPDATE captura SET estado='guardado', resultado=? WHERE id=?", (json.dumps(r["ref"]), cid))
             self.con.commit()
-            return self.tg.editar(chat, msg, C.resumen_propuesta(d) + f"\n\n✅ {r['texto']}")
+            txt = C.resumen_propuesta(d) + f"\n\n✅ {r['texto']}"
+            if C.es_factura(d):
+                st = ST.de_factura(self.con, d["rut"], d["folio"], F.load_cfg(self.con), datetime.now(ZONA).date())
+                if st:
+                    txt += "\n\n📦 Stock:\n" + "\n".join(f"• +{q:g} {p}: ahora deberían quedar {e:g}" for p, q, e in st)
+                    txt += "\nSi no calza, escribe por ejemplo «quedan 30 brownies»."
+                elif d.get("lineas") and ST.productos(self.con):
+                    txt += "\n\n📦 Estos productos no están vinculados al stock: vincúlalos una vez en el panel (página Stock o ficha del proveedor) y desde la próxima factura se suman solos."
+            return self.tg.editar(chat, msg, txt)
 
     def pendiente_edicion(self, chat, borrar=False):
         r = self.con.execute("SELECT valor FROM parametro WHERE clave=?", (f"edit_{chat}",)).fetchone()
@@ -359,10 +403,68 @@ class Bot:
         f = self.con.execute("SELECT * FROM captura WHERE chat_id=? AND estado='guardado' ORDER BY id DESC LIMIT 1", (chat,)).fetchone()
         if not f:
             return "No hay nada tuyo que deshacer."
-        C.deshacer(self.con, json.loads(f["resultado"]), f["creado"])
+        ref, datos = json.loads(f["resultado"]), json.loads(f["datos"])
+        if ref.get("tipo") == "stock":
+            for i in ref["entradas"]:
+                self.con.execute("DELETE FROM stock_entrada WHERE id=?", (i,))
+            for fecha, p in ref["conteos"]:
+                self.con.execute("DELETE FROM stock_conteo WHERE fecha=? AND producto=? AND creado>=?", (fecha, p, f["creado"]))
+        else:
+            C.deshacer(self.con, ref, f["creado"])
         self.con.execute("UPDATE captura SET estado='deshecho' WHERE id=?", (f["id"],))
         self.con.commit()
-        return "Listo, borré lo último que guardé: " + (C.resumen_propuesta(json.loads(f["datos"])) or "")[:300]
+        resumen = datos.get("texto") if datos.get("clase") == "stock" else C.resumen_propuesta(datos)
+        return "Listo, borré lo último que guardé: " + (resumen or "")[:300]
+
+
+def corte_ahora_cl():
+    return ST.corte_ahora(datetime.now(ZONA).replace(tzinfo=None))
+
+
+def texto_stock(con):
+    cfg = F.load_cfg(con)
+    filas = ST.estado(con, cfg, datetime.now(ZONA).date())
+    if not filas:
+        return "Todavía no hay stock cargado. Mándame el Excel de stock de FUDO."
+    ult = max(x["fecha"] for x in filas)
+    bajos = [x for x in filas if x["bajo"]]
+    t = [f"Stock esperado hoy (último conteo {ult[8:10]}/{ult[5:7]}, más llegadas, menos ventas cargadas):"]
+    if bajos:
+        t.append("\n⚠️ Bajo el mínimo:\n" + "\n".join(f"• {x['producto']}: {x['esperado']:g} (mínimo {x['minimo']:g})" for x in bajos))
+    t.append("\n" + "\n".join(f"• {x['producto']}: {x['esperado']:g}" for x in filas if not x["bajo"]))
+    total = sum(x["valor"] or 0 for x in filas)
+    t.append(f"\nValor al costo: {I.clp(total)} sin IVA.")
+    uv = con.execute("SELECT MAX(fecha) FROM venta_producto").fetchone()[0]
+    if uv:
+        t.append(f"Las ventas están descontadas hasta el {uv[8:10]}/{uv[5:7]}.")
+    return "\n".join(t)
+
+
+def resumen_mes(con):
+    from . import metas as MT
+    hoy = datetime.now(ZONA).date()
+    per = hoy.strftime("%Y-%m")
+    cfg = F.load_cfg(con)
+    p = F.pnl_mes(con, per, cfg)
+    v = p["ventas"]
+    if not v["dias_abiertos"]:
+        return "Todavía no hay ventas de este mes. Mándame los Excel de FUDO."
+    uv = con.execute("SELECT MAX(fecha) FROM venta_hora").fetchone()[0]
+    t = [f"{I.mes_largo(per).capitalize()}, con ventas hasta el {uv[8:10]}/{uv[5:7]}:",
+         f"Vendieron {I.clp(v['bruto'])} con IVA ({I.clp(v['neto'])} sin IVA) en {v['dias_abiertos']} días; "
+         f"{I.clp(round(v['bruto'] / v['dias_abiertos']))} por día.",
+         f"Costo de lo vendido: {p['pct']['costo_venta']:.0f}% de la venta."]
+    r = MT.ritmo(con, cfg, per, p)
+    if r:
+        t.append(f"A este ritmo el mes cierra en {I.clp(r['proy_venta'])} sin IVA"
+                 + (f" y una ganancia cercana a {I.clp(r['proy_resultado'])}." if r["proy_resultado"] is not None else "."))
+    meta = MT.leer(con, per).get("venta")
+    if meta and r:
+        t.append(f"Meta de venta: {I.clp(meta)}: " + ("la cumples." if r["proy_venta"] >= meta else f"faltarían {I.clp(meta - r['proy_venta'])}."))
+    eq = p["equilibrio"]["venta_bruta_dia"]
+    if eq:
+        t.append(f"Para no perder hay que vender {I.clp(eq)} con IVA por día en promedio.")
+    return "\n".join(t) + "\n\nhttps://panel.lazzycoffee.cl/mes"
 
 
 def estado_datos(con):
@@ -460,6 +562,8 @@ def main():
     tg = Telegram(token)
     bot = Bot(con, tg, os.environ.get("LAZZY_ARCHIVOS", str(Path(db).parent / "archivos")))
     tg("setMyCommands", commands=[{"command": "resumen", "description": "Cómo va la semana"},
+                                  {"command": "mes", "description": "Cómo va el mes"},
+                                  {"command": "stock", "description": "Qué debería haber hoy"},
                                   {"command": "deshacer", "description": "Borra lo último que guardé"},
                                   {"command": "ayuda", "description": "Qué puedo hacer"}])
     offset, espera = None, 1

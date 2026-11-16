@@ -327,8 +327,14 @@ def estado_resultados(request):
     i = ps.index(per)
     det = E.detalle(con, cfg, per)
     det.update(E.detalle_costo(est["cur"]))
+    c = est["cur"]
+    fuera = sum(E.pagos_fuera(con).values())
+    fijos = c["personal"] + c["gasto_operacional"] - c["lineas"].get("gasto_operacional", {}).get("comision_tarjetas", 0)
+    mc = 1 - (c["costo_venta"] + c["lineas"].get("gasto_operacional", {}).get("comision_tarjetas", 0)) / c["ventas"]["neto"] if c["ventas"]["neto"] else 0
+    eq = {"fijos": fijos, "mc": round(100 * mc, 1), "fuera": fuera,
+          "dia_fuera": round((fijos + fuera) / mc * (1 + cfg["empresa"]["iva"]) / c["equilibrio"]["dias_mes"]) if fuera and mc > 0 and c["equilibrio"]["dias_mes"] else None}
     return page(request, "estado.html", e=est, per=per, ps=ps, det=det, comp=E.composicion(est["cur"]),
-                puente=E.puente(con, cfg, per, ps), compras=est["cur"]["compras"],
+                puente=E.puente(con, cfg, per, ps), compras=est["cur"]["compras"], eq=eq, caja=E.caja(con, cfg, per),
                 parcial=per >= hoy, ant=ps[i - 1] if i else None, sig=ps[i + 1] if i < len(ps) - 1 else None,
                 anio_ant=E.menos(per, 12), chart=json.dumps(chart), colores=E.COLOR)
 

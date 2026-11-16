@@ -218,7 +218,7 @@ def test_deshacer_devuelve_costos_y_detalle(entorno):
     assert con.execute("SELECT costo FROM producto_costo WHERE producto='Cheesecake berries'").fetchone()[0] == costo1
     assert con.execute("SELECT COUNT(*) FROM evento WHERE tipo='costo'").fetchone()[0] == 0
     # factura que ya estaba por el SII: al deshacer se va el detalle que puso el bot y la factura queda
-    con.execute("INSERT INTO compra VALUES ('2026-11',33,'77323879-0','Ana',6300,'2026-11-14',0,70588,13412,0,84000,0,NULL,'sii')")
+    con.execute("INSERT INTO compra VALUES ('2026-11',33,'77323879-0','Ana',6300,'2026-11-14',0,70588,13412,0,84000,0,NULL,'sii',NULL)")
     _pdf(bot, resp, dict(f2, folio=6300, fecha="2026-11-14"))
     assert "ya está en el panel" in tg.enviados[-1][1]
     boton(bot, tg, "ok:" + tg.enviados[-1][2][0][0]["callback_data"].split(":")[1])

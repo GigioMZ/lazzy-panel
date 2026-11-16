@@ -11,8 +11,8 @@ def base():
     con.execute("INSERT INTO venta_hora VALUES ('2026-09-01',9,119000,10)")     # neto 100.000
     con.execute("INSERT INTO venta_hora VALUES ('2026-10-01',9,238000,20)")     # neto 200.000
     con.execute("INSERT INTO proveedor(rut,nombre,categoria) VALUES ('1-9','CAFE','cafe')")
-    con.execute("INSERT INTO compra VALUES ('2026-10',33,'1-9','CAFE',1,'2026-10-02',0,60000,11400,0,71400,0,NULL,'sii')")
-    con.execute("INSERT INTO compra VALUES ('2026-10',33,'2-7','NUEVO',2,'2026-10-03',0,20000,3800,0,23800,0,NULL,'sii')")
+    con.execute("INSERT INTO compra VALUES ('2026-10',33,'1-9','CAFE',1,'2026-10-02',0,60000,11400,0,71400,0,NULL,'sii',NULL)")
+    con.execute("INSERT INTO compra VALUES ('2026-10',33,'2-7','NUEVO',2,'2026-10-03',0,20000,3800,0,23800,0,NULL,'sii',NULL)")
     con.execute("INSERT INTO costo_fijo(nombre,categoria,monto,desde) VALUES ('s','remuneraciones',50000,'2026-01')")
     con.execute("INSERT INTO venta_producto VALUES ('2026-10-01','Café','Latte',20,238000)")
     con.commit()

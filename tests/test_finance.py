@@ -133,8 +133,8 @@ def test_comision_tarjetas_facturada_y_estimada():
         con.execute("INSERT INTO venta_hora VALUES (?,9,?,1)", (m + "-15", deb + cre))
         con.execute("INSERT INTO venta_medio_pago VALUES (?, 'Tarj. Débito', ?, 1)", (m + "-15", deb))
         con.execute("INSERT INTO venta_medio_pago VALUES (?, 'Tarj. Crédito', ?, 1)", (m + "-15", cre))
-    con.execute("INSERT INTO compra VALUES ('2026-10',33,'9-9','TBK',1,'2026-09-28',0,20000,3800,0,23800,0,NULL,'sii')")
-    con.execute("INSERT INTO compra VALUES ('2026-10',61,'9-9','TBK',2,'2026-09-30',0,1000,190,0,1190,0,NULL,'sii')")
+    con.execute("INSERT INTO compra VALUES ('2026-10',33,'9-9','TBK',1,'2026-09-28',0,20000,3800,0,23800,0,NULL,'sii',NULL)")
+    con.execute("INSERT INTO compra VALUES ('2026-10',61,'9-9','TBK',2,'2026-09-30',0,1000,190,0,1190,0,NULL,'sii',NULL)")
     sep = comision_mes(con, "2026-09", cfg)
     assert sep["facturado"] == 19000 and not sep["estimada"] and sep["pct"] == 1.9
     octu = comision_mes(con, "2026-10", cfg)        # aún sin factura: se estima con la tasa de septiembre

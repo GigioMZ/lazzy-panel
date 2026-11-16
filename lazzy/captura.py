@@ -260,7 +260,7 @@ def cambios_precio(con, d, umbral=3.0):
 
 def guardar(con, d, usuario=None):
     """Escribe la propuesta confirmada. Devuelve una frase con lo que quedó registrado."""
-    ahora = datetime.now().isoformat(timespec="seconds")
+    ahora = datetime.now().isoformat(timespec="microseconds")
     if d["clase"] == "gastos":
         n = 0
         for g in d["gastos"]:
@@ -284,9 +284,11 @@ def guardar(con, d, usuario=None):
         tenia = con.execute("SELECT 1 FROM factura_linea WHERE tipo_doc=? AND rut=? AND folio=?", (td, d["rut"], d["folio"])).fetchone()
         if not ya:
             con.execute("INSERT INTO compra(periodo,tipo_doc,rut,razon_social,folio,fecha_doc,exento,neto,iva_rec,iva_no_rec,"
-                        "total,activo_fijo_neto,categoria,origen) VALUES (?,?,?,?,?,?,?,?,?,0,?,0,NULL,'bot')",
+                        "total,activo_fijo_neto,categoria,origen,creado) VALUES (?,?,?,?,?,?,?,?,?,0,?,0,NULL,'bot',?)",
                         (d["fecha"][:7], td, d["rut"], d["razon_social"], d["folio"], d["fecha"], d["exento"], d["neto"],
-                         d["iva"], d["total"]))
+                         d["iva"], d["total"], ahora))
+        else:
+            con.execute("UPDATE compra SET creado=? WHERE tipo_doc=? AND rut=? AND folio=? AND creado IS NULL", (ahora, td, d["rut"], d["folio"]))
         con.execute("DELETE FROM factura_linea WHERE tipo_doc=? AND rut=? AND folio=?", (td, d["rut"], d["folio"]))
         con.executemany("INSERT INTO factura_linea VALUES (?,?,?,?,?,?,?,?,?)",
                         [(td, d["rut"], d["folio"], i, _clave(x["descripcion"]), x["cantidad"], x["precio_neto"], x["total_neto"],

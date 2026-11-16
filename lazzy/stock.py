@@ -42,7 +42,7 @@ def corte_ahora(ahora=None):
 def guardar(con, filas, fecha=None, corte=None):
     fecha = fecha or date.today().isoformat()
     corte = corte or corte_ahora()
-    ahora = datetime.now().isoformat(timespec="seconds")
+    ahora = datetime.now().isoformat(timespec="microseconds")
     con.execute("DELETE FROM stock_conteo WHERE fecha=?", (fecha,))
     con.executemany("INSERT INTO stock_conteo(fecha,producto,cantidad,minimo,corte,creado) VALUES (?,?,?,?,?,?)",
                     [(fecha, f["producto"], f["cantidad"], f.get("minimo"), corte, ahora) for f in filas])
@@ -51,33 +51,41 @@ def guardar(con, filas, fecha=None, corte=None):
 
 
 def _movimientos(con, productos):
-    """Entradas (facturas vinculadas) y salidas (ventas, también dentro de combos) por producto y día."""
+    """Entradas (facturas vinculadas y llegadas anotadas, también merma anotada con signo menos) y salidas (ventas, también
+    dentro de combos) por producto. Cada movimiento es (fecha, cantidad, creado): «creado» permite ordenar contra un
+    conteo del mismo día lo que se anotó después de subirlo."""
     ent, sal = {}, {}
-    # una llegada anotada el mismo día del corte cuenta después del conteo si se anotó después de subirlo
-    cortes = {}
-    for r in con.execute("SELECT producto, corte, creado FROM stock_conteo"):
-        cortes.setdefault(r["producto"], []).append((r["corte"], r["creado"] or ""))
     for r in con.execute("SELECT producto p, fecha f, cantidad q, creado c FROM stock_entrada"):
-        f = r["f"]
-        if any(f == c and (r["c"] or "") >= cr for c, cr in cortes.get(r["p"], [])):
-            f = f + "T"            # queda después del corte de ese día al comparar textos
-        ent.setdefault(r["p"], []).append((f, r["q"]))
-    for r in con.execute("SELECT v.destino p, c.fecha_doc f, SUM(l.cantidad * v.divisor) q FROM vinculo v "
+        ent.setdefault(r["p"], []).append((r["f"], r["q"], r["c"]))
+    for r in con.execute("SELECT v.destino p, c.fecha_doc f, c.creado c, SUM(l.cantidad * v.divisor) q FROM vinculo v "
                          "JOIN factura_linea l ON l.rut=v.rut AND l.descripcion=v.clave "
                          "JOIN compra c ON c.tipo_doc=l.tipo_doc AND c.rut=l.rut AND c.folio=l.folio "
-                         "WHERE v.tipo='producto' AND l.tipo_doc<>61 GROUP BY 1, 2"):
-        ent.setdefault(r["p"], []).append((r["f"], r["q"] or 0))
+                         "WHERE v.tipo='producto' AND l.tipo_doc<>61 GROUP BY 1, 2, 3"):
+        ent.setdefault(r["p"], []).append((r["f"], r["q"] or 0, r["c"]))
     nombres = [r[0] for r in con.execute("SELECT DISTINCT producto FROM venta_producto")]
     partes = {n: [x for x in F.componentes(n, nombres) if x] for n in nombres if "+" in n}
     for r in con.execute("SELECT producto p, fecha f, SUM(cantidad) q FROM venta_producto GROUP BY 1, 2"):
         for prod in ([r["p"]] if r["p"] not in partes else partes[r["p"]]):
             if prod in productos:
-                sal.setdefault(prod, []).append((r["f"], r["q"]))
+                sal.setdefault(prod, []).append((r["f"], r["q"], None))
     return ent, sal
 
 
-def _suma(movs, desde, hasta):
-    return sum(q for f, q in movs if desde < f <= hasta + "T")
+def _despues(mov, conteo):
+    """¿El movimiento es posterior al conteo? Los del mismo día del corte cuentan después solo si se anotaron después."""
+    f, _, creado = mov
+    if conteo is None:
+        return True
+    if f != conteo["corte"]:
+        return f > conteo["corte"]
+    return bool(creado and conteo.get("creado") and creado >= conteo["creado"])
+
+
+def _suma(movs, a, b=None):
+    """Movimientos posteriores al conteo a y no posteriores al conteo b (b puede ser una fecha AAAA-MM-DD)."""
+    if isinstance(b, str):
+        b = {"corte": b, "creado": "9999"}
+    return sum(m[1] for m in movs if _despues(m, a) and (b is None or not _despues(m, b)))
 
 
 def _conteos(con):
@@ -96,7 +104,7 @@ def estado(con, cfg, hoy=None):
     out = []
     for p, cs in por.items():
         u = cs[-1]
-        e, s = _suma(ent.get(p, []), u["corte"], hoy), _suma(sal.get(p, []), u["corte"], hoy)
+        e, s = _suma(ent.get(p, []), u, hoy), _suma(sal.get(p, []), u, hoy)
         esperado = u["cantidad"] + e - s
         c = (costos.get(p) or {}).get("costo")
         out.append({"producto": p, "conteo": u["cantidad"], "fecha": u["fecha"], "entradas": e, "ventas": s, "esperado": esperado,
@@ -113,7 +121,7 @@ def ajustes(con, cfg):
     out = []
     for p, cs in por.items():
         for a, b in zip(cs, cs[1:]):
-            e, s = _suma(ent.get(p, []), a["corte"], b["corte"]), _suma(sal.get(p, []), a["corte"], b["corte"])
+            e, s = _suma(ent.get(p, []), a, b), _suma(sal.get(p, []), a, b)
             esperado = a["cantidad"] + e - s
             dif = b["cantidad"] - esperado
             c = (costos.get(p) or {}).get("costo")
@@ -146,7 +154,7 @@ def valor(con, cfg, fecha):
             continue
         hay = True
         u = prev[-1]
-        q = u["cantidad"] + _suma(ent.get(p, []), u["corte"], fecha) - _suma(sal.get(p, []), u["corte"], fecha)
+        q = u["cantidad"] + _suma(ent.get(p, []), u, fecha) - _suma(sal.get(p, []), u, fecha)
         total += max(q, 0) * ((costos.get(p) or {}).get("costo") or 0)
     return round(total) if hay else None
 
@@ -168,12 +176,77 @@ def buscar(con, texto):
 
 
 def registrar_llegada(con, producto, cantidad, fecha=None, nota=None, origen="panel"):
-    con.execute("INSERT INTO stock_entrada(fecha,producto,cantidad,nota,origen,creado) VALUES (?,?,?,?,?,?)",
-                (fecha or date.today().isoformat(), producto, float(cantidad), nota, origen, datetime.now().isoformat(timespec="seconds")))
+    """Llegada (cantidad positiva) o merma anotada (negativa, origen que empieza con «merma»). Devuelve el id."""
+    cur = con.execute("INSERT INTO stock_entrada(fecha,producto,cantidad,nota,origen,creado) VALUES (?,?,?,?,?,?)",
+                      (fecha or date.today().isoformat(), producto, float(cantidad), nota, origen, datetime.now().isoformat(timespec="microseconds")))
     con.commit()
+    return cur.lastrowid
+
+
+def ajustar(con, producto, cantidad, fecha=None, corte=None):
+    """Conteo de un solo producto («quedan 12 brownies»). Devuelve lo que esperaba el panel antes del ajuste."""
+    from . import finance as F
+    esp = next((x["esperado"] for x in estado(con, F.load_cfg(con)) if x["producto"] == producto), None)
+    fecha = fecha or date.today().isoformat()
+    minimo = con.execute("SELECT minimo FROM stock_conteo WHERE producto=? ORDER BY fecha DESC LIMIT 1", (producto,)).fetchone()
+    con.execute("DELETE FROM stock_conteo WHERE fecha=? AND producto=?", (fecha, producto))
+    con.execute("INSERT INTO stock_conteo(fecha,producto,cantidad,minimo,corte,creado) VALUES (?,?,?,?,?,?)",
+                (fecha, producto, float(cantidad), minimo[0] if minimo else None, corte or corte_ahora(),
+                 datetime.now().isoformat(timespec="microseconds")))
+    con.commit()
+    return esp
+
+
+def merma_anotada(con, periodo, cfg):
+    """Valor de lo anotado como merma (se botó, se regaló) en el mes."""
+    costos = cfg["costo_producto"]
+    return round(sum(-r["cantidad"] * ((costos.get(r["producto"]) or {}).get("costo") or 0) for r in con.execute(
+        "SELECT producto, cantidad FROM stock_entrada WHERE fecha LIKE ? AND origen LIKE 'merma%'", (periodo + "%",))))
+
+
+def bajo_minimo(con, cfg, hoy=None):
+    return [x for x in estado(con, cfg, hoy) if x["bajo"]]
+
+
+def de_factura(con, rut, folio, cfg, hoy=None):
+    """Productos del stock que llegaron en una factura, con lo que debería quedar ahora."""
+    llegados = {r["destino"]: r["q"] for r in con.execute(
+        "SELECT v.destino, SUM(l.cantidad * v.divisor) q FROM factura_linea l JOIN vinculo v ON v.rut=l.rut AND v.clave=l.descripcion "
+        "WHERE l.rut=? AND l.folio=? AND v.tipo='producto' GROUP BY v.destino", (rut, folio))}
+    est = {x["producto"]: x for x in estado(con, cfg, hoy)}
+    return [(p, q, est[p]["esperado"]) for p, q in llegados.items() if p in est]
 
 
 _LLEGADA = r"^\s*(?:llegaron|lleg[oó]|entraron|recibimos|trajimos|ingresaron)\s+(.+)$"
+_AJUSTE = r"^\s*(?:quedan|queda|hay|tenemos|stock(?: de)?)\s+(.+)$"
+_MERMA = r"^\s*(?:merma|se botaron|se bot[oó]|botamos|se venci[oó]|se vencieron|se cay[oó]|se cayeron|regalamos|se regal[oó])\s+(?:de\s+)?(.+)$"
+
+
+def _items(con, texto):
+    import re
+    out, faltan = [], []
+    texto, _, motivo = texto.partition(" por ")
+    for parte in re.split(r",|;|\sy\s|\n", texto):
+        m2 = re.match(r"\s*(\d+(?:[.,]\d+)?)\s+(?:de\s+)?(.+?)\s*$", parte) or re.match(r"\s*(.+?)\s+(\d+(?:[.,]\d+)?)\s*$", parte)
+        if not m2:
+            continue
+        n, nombre = (m2.group(1), m2.group(2)) if m2.group(1)[0].isdigit() else (m2.group(2), m2.group(1))
+        p = buscar(con, nombre)
+        (out.append((p, float(n.replace(",", ".")))) if p else faltan.append(nombre.strip()))
+    return {"items": out, "faltan": faltan, "motivo": motivo.strip()[:80] or None}
+
+
+def parsear_stock(con, texto):
+    """Mensajes de stock: llegada, ajuste o merma. None si el texto no es de stock."""
+    import re
+    for tipo, rx in (("llegada", _LLEGADA), ("ajuste", _AJUSTE), ("merma", _MERMA)):
+        m = re.match(rx, texto.strip(), re.I)
+        if m:
+            r = _items(con, m.group(1))
+            if tipo != "llegada" and not r["items"] and not r["faltan"]:
+                return None
+            return dict(r, tipo=tipo)
+    return None
 
 
 def parsear_llegada(con, texto):
