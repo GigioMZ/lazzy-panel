@@ -27,7 +27,7 @@ def login(c):
 
 def test_requiere_login(tmp_path):
     c, _ = client(tmp_path)
-    for url in ("/", "/resultados", "/productos", "/insumos", "/compras", "/costos-fijos", "/impuestos", "/cargar", "/ayuda"):
+    for url in ("/", "/mes", "/resultados", "/productos", "/insumos", "/compras", "/costos-fijos", "/impuestos", "/cargar", "/ayuda"):
         r = c.get(url)
         assert r.status_code == 303 and r.headers["location"] == "/login"
     assert c.post("/insumos", data={"nombre": "x"}).status_code == 303
@@ -36,10 +36,10 @@ def test_requiere_login(tmp_path):
 def test_paginas_y_edicion(tmp_path):
     c, con = client(tmp_path)
     csrf = login(c)
-    for url in ("/?periodo=2026-10", "/resultados", "/productos", "/insumos", "/compras", "/costos-fijos",
-                "/impuestos", "/cargar", "/receta?p=Latte", "/ayuda", "/bot", "/?periodo=1999-01"):
+    for url in ("/", "/?p=mes_pasado", "/?p=anio", "/?desde=2026-10-01&hasta=2026-10-31", "/?desde=malo", "/mes?periodo=2026-10", "/resultados", "/productos", "/insumos", "/compras", "/costos-fijos",
+                "/impuestos", "/cargar", "/receta?p=Latte", "/ayuda", "/bot", "/mes?periodo=1999-01"):
         assert c.get(url).status_code == 200, url
-    inicio = c.get("/?periodo=2026-10").text
+    inicio = c.get("/mes?periodo=2026-10").text
     assert "proveedores sin categoría" in inicio and "Facturas sin categoría" in inicio
     assert 'class="tip"' in inicio and "te quedaron" in inicio
     # sin token CSRF no se puede escribir

@@ -8,7 +8,7 @@ try:
     import tomllib
 except ModuleNotFoundError:  # Python < 3.11
     import tomli as tomllib
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 import openpyxl
@@ -23,6 +23,7 @@ from markupsafe import Markup, escape
 from . import finance as F
 from . import analisis as A
 from . import insights as I
+from . import tablero as TB
 from .auth import check_password
 from .db import connect
 from .glosario import CAT_NOMBRE, CATEGORIAS_UI, GLOSARIO, GRUPO_NOMBRE
@@ -66,7 +67,7 @@ def tip(clave):
 
 
 T.env.globals.update(tip=tip, G=GLOSARIO, CATS_UI=CATEGORIAS_UI, GRUPOS=GRUPO_NOMBRE)
-NAV = [("Ver", [("/", "Inicio"), ("/decisiones", "Decisiones"), ("/resultados", "Mes a mes"), ("/productos", "Productos"),
+NAV = [("Ver", [("/", "Tablero"), ("/mes", "Cierre del mes"), ("/decisiones", "Decisiones"), ("/resultados", "Mes a mes"), ("/productos", "Productos"),
                  ("/impuestos", "IVA")]),
        ("Actualizar", [("/bot", "Bot de Telegram"), ("/cargar", "Subir archivos"), ("/compras", "Facturas y proveedores"),
                        ("/insumos", "Insumos y precios"), ("/costos-fijos", "Gastos fijos")]),
@@ -151,6 +152,47 @@ def logout(request: Request):
 
 
 @app.get("/", response_class=HTMLResponse)
+def tablero(request: Request):
+    user(request)
+    con = db()
+    u = con.execute("SELECT MAX(fecha) FROM venta_hora").fetchone()[0]
+    if not u:
+        return RedirectResponse("/cargar", 303)
+    ultimo = date.fromisoformat(u)
+    pre = TB.presets(ultimo)
+    q = request.query_params
+    clave = q.get("p") or ("" if q.get("desde") else "semana_pasada")
+    try:
+        if clave in pre:
+            nombre, d0, d1 = pre[clave]
+        else:
+            d0, d1 = date.fromisoformat(q["desde"]), date.fromisoformat(q["hasta"])
+            if d1 < d0:
+                d0, d1 = d1, d0
+            d1 = min(d1, d0 + timedelta(days=730))
+            nombre, clave = "Rango elegido", ""
+    except (KeyError, ValueError):
+        nombre, d0, d1 = pre["semana_pasada"]
+        clave = "semana_pasada"
+    cfg = F.load_cfg(con, d1.isoformat())
+    cache = {}
+    a0, a1 = TB.anterior(d0, d1)
+    r, ra = TB.resultado(con, cfg, d0, d1, cache), TB.resultado(con, cfg, a0, a1, cache)
+    n = (d1 - d0).days + 1
+    dias = TB.agrupar(TB.ventas_diarias(con, cfg, d0, d1), n)
+    dias_a = TB.agrupar(TB.ventas_diarias(con, cfg, a0, a1), n)
+    var = lambda x, y: I.variacion(x, y) if y else None
+    datos = {"dias": dias, "dias_a": [x["neto"] for x in dias_a][:len(dias)],
+             "cat": TB.por_categoria(con, cfg, d0, d1), "medios": TB.medios(con, d0, d1),
+             "top": TB.top_productos(con, cfg, d0, d1), "semanas": TB.semanas(con, cfg, ultimo),
+             "cascada": [r["neto"], r["costo_venta"], r["sueldos"], r["gastos"], r["ganancia"]]}
+    return page(request, "tablero.html", r=r, ra=ra, pre=pre, clave=clave, nombre=nombre, d0=d0, d1=d1, a0=a0, a1=a1,
+                ultimo=ultimo, datos=json.dumps(datos, default=str), n=n,
+                var={k: var(r[k], ra[k]) for k in ("neto", "costo_venta", "margen", "ganancia", "tickets", "ticket")},
+                incompleto=d1 > ultimo)
+
+
+@app.get("/mes", response_class=HTMLResponse)
 def resumen(request: Request):
     user(request)
     con = db()

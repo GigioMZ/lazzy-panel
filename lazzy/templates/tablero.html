@@ -1,0 +1,85 @@
+{% extends "base.html" %}{% block title %}Tablero{% endblock %}{% block main %}
+{% macro delta(v, invertir=false) %}{% if v is not none %}{% set bueno = (v >= 0) != invertir %}<span class="delta {{ 'sube' if bueno else 'baja' }}">{{ '▲' if v >= 0 else '▼' }} {{ v|abs|pct(0) }}</span>{% endif %}{% endmacro %}
+<div class="cab"><h1>Tablero</h1></div>
+<div class="filtros" role="group" aria-label="Período">{% for k,(t,a,b) in pre.items() %}<a class="chip" href="/?p={{k}}" aria-pressed="{{ 'true' if k==clave else 'false' }}">{{t}}</a>{% endfor %}
+<form class="fila" style="margin-left:auto"><label>Desde <input type="date" name="desde" value="{{d0}}" max="{{ultimo}}"></label><label>hasta <input type="date" name="hasta" value="{{d1}}" max="{{ultimo}}"></label><button class="btn sec">Ver</button></form></div>
+<p class="sub">{{nombre}}: del {{d0.day}}/{{d0.month}} al {{d1.day}}/{{d1.month}}/{{d1.year}} ({{r.dias}} días con ventas). Se compara con los {{n}} días anteriores, del {{a0.day}}/{{a0.month}} al {{a1.day}}/{{a1.month}}.{% if incompleto %} Ventas cargadas hasta el {{ultimo.day}}/{{ultimo.month}}.{% endif %}</p>
+
+<p class="veredicto" style="max-width:none">Vendiste {{r.neto|clp}}, te costó {{r.costo_venta|clp}} y te {{ 'quedaron' if r.ganancia >= 0 else 'faltaron' }} {{r.ganancia|abs|clp}}.</p>
+<p class="veredicto-det">Montos sin IVA. La ganancia es estimada: costo de lo vendido según recetas, y sueldos y gastos repartidos por día. {{ tip('ganancia_est') }}</p>
+
+<div class="tarjetas">
+<div class="tarjeta"><div class="t">Vendiste {{ tip('venta_neta') }}</div><div class="n">{{r.neto|clp}}</div><div class="d">{{ delta(var.neto) }} {{r.bruto|clp}} con IVA</div></div>
+<div class="tarjeta"><div class="t">Costo de lo vendido {{ tip('costo_vendido') }}</div><div class="n">{{r.costo_venta|clp}}</div><div class="d">{{ delta(var.costo_venta, true) }} {{ (100*r.costo_venta/r.neto)|pct(0) if r.neto }} de la venta</div></div>
+<div class="tarjeta"><div class="t">Margen bruto {{ tip('margen_periodo') }}</div><div class="n">{{r.margen|clp}}</div><div class="d">{{ delta(var.margen) }} {{r.margen_pct|pct(0)}} de la venta</div></div>
+<div class="tarjeta"><div class="t">Sueldos y gastos {{ tip('sueldos_gastos') }}</div><div class="n">{{(r.sueldos+r.gastos)|clp}}</div><div class="d">sueldos {{r.sueldos|clp}}, local y tarjetas {{r.gastos|clp}}</div></div>
+<div class="tarjeta fuerte"><div class="t">Ganancia estimada {{ tip('ganancia_est') }}</div><div class="n {{ 'malo' if r.ganancia < 0 }}">{{r.ganancia|clp}}</div><div class="d">{{ delta(var.ganancia) }} {{r.ganancia_pct|pct(0)}} de la venta</div></div>
+<div class="tarjeta"><div class="t">Ventas {{ tip('ticket') }}</div><div class="n">{{r.tickets|num}}</div><div class="d">{{ delta(var.tickets) }} promedio {{r.ticket|clp}} con IVA {{ delta(var.ticket) }}</div></div>
+</div>
+
+<section class="bloque dos">
+<div class="panel"><h2>De la venta a la ganancia {{ tip('cascada') }}</h2><div class="grafico"><canvas id="g-cascada" role="img" aria-label="Venta, costos y ganancia del período"></canvas></div></div>
+<div class="panel"><h2>¿En qué se fue cada $1.000?</h2><div class="dona"><div class="grafico chico"><canvas id="g-mil" role="img" aria-label="Reparto de cada mil pesos vendidos"></canvas><div class="centro"><b id="c-mil"></b><span>de ganancia</span></div></div><ul class="ley" id="l-mil"></ul></div></div>
+</section>
+
+<section class="bloque panel"><h2>Ventas por {{ 'día' if n <= 45 else ('semana' if n <= 200 else 'mes') }}</h2><p class="sub">Sin IVA. Las barras son este período; la línea, el período anterior.</p>
+<div class="grafico"><canvas id="g-dias" role="img" aria-label="Ventas por día comparadas con el período anterior"></canvas></div></section>
+
+<section class="bloque dos">
+<div class="panel"><h2>Qué vendiste</h2><div class="dona"><div class="grafico chico"><canvas id="g-cat" role="img" aria-label="Ventas por categoría"></canvas><div class="centro"><b id="c-cat"></b><span>sin IVA</span></div></div><ul class="ley" id="l-cat"></ul></div></div>
+<div class="panel"><h2>Cómo te pagaron</h2><div class="dona"><div class="grafico chico"><canvas id="g-med" role="img" aria-label="Ventas por medio de pago"></canvas><div class="centro"><b id="c-med"></b><span>con IVA</span></div></div><ul class="ley" id="l-med"></ul></div></div>
+</section>
+
+<section class="bloque panel"><div class="cab" style="margin-bottom:6px"><h2 style="margin-right:auto">Productos del período</h2>
+<div class="filtros" role="group" aria-label="Ordenar productos" style="margin:0"><button class="chip" data-o="venta" aria-pressed="true">Más vendidos</button><button class="chip" data-o="ganancia" aria-pressed="false">Más ganancia</button></div></div>
+<div class="grafico alto"><canvas id="g-top" role="img" aria-label="Diez productos principales"></canvas></div>
+<p class="nota">«Más ganancia» solo incluye productos con costo cargado. <a href="/productos?desde={{d0.strftime('%Y-%m')}}&hasta={{d1.strftime('%Y-%m')}}">Ver todos</a></p></section>
+
+<section class="bloque panel"><h2>Últimas 12 semanas</h2><p class="sub">Venta sin IVA por semana y ganancia estimada. Sirve para ver la tendencia sin esperar el cierre del mes.</p>
+<div class="grafico"><canvas id="g-sem" role="img" aria-label="Ventas y ganancia de las últimas doce semanas"></canvas></div></section>
+
+{% if n >= 28 %}<section class="bloque"><h2>Recetas contra facturas {{ tip('recetas_vs_facturas') }}</h2>
+<p class="sub">Según las recetas, lo vendido costó <b>{{r.costo_venta|clp}}</b>. En el mismo período llegaron facturas de insumos por <b>{{r.compras_insumos|clp}}</b>{% if r.compras_insumos and r.costo_venta %} ({{ (100*r.compras_insumos/r.costo_venta)|round|int }}% de lo esperado){% endif %}. Se calculó con costo cargado para el {{r.cobertura|int}}% del costo; el resto se estimó por categoría.</p></section>{% endif %}
+{% endblock %}
+{% block js %}<script src="/static/chart.umd.js"></script><script>
+LZ.base();
+const D={{datos|safe}}, PAL=['#2f6f9f','#d9772b','#1f9e78','#d6a300','#c94f63','#6a52b8'], GRIS='#a59d8c';
+const pct=(v,t)=>t?Math.round(100*v/t)+'%':'';
+function dona(id, items, centro, extra){
+  const tot=items.reduce((s,x)=>s+x.v,0), el=document.getElementById(id);
+  new Chart(el,{type:'doughnut',data:{labels:items.map(x=>x.n),datasets:[{data:items.map(x=>x.v),backgroundColor:items.map((x,i)=>x.c||(x.n==='Otros'?GRIS:PAL[i%PAL.length])),borderColor:LZ.papel,borderWidth:2,hoverOffset:6}]},
+    options:{cutout:'64%',plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>' '+c.label+': '+LZ.clp(c.raw)+' ('+pct(c.raw,tot)+')'}}}}});
+  document.getElementById('c-'+id.slice(2)).textContent=centro(tot);
+  document.getElementById('l-'+id.slice(2)).innerHTML=items.map((x,i)=>'<li><i style="background:'+(x.c||(x.n==='Otros'?GRIS:PAL[i%PAL.length]))+'"></i><span>'+x.n+'</span><b>'+(extra?extra(x,tot):LZ.clp(x.v))+'</b><em>'+pct(x.v,tot)+'</em></li>').join('');
+}
+// cada $1.000
+const [neto,cv,su,ga,gan]=D.cascada, m=v=>neto?Math.round(1000*v/neto):0;
+dona('g-mil',[{n:'Costo de lo vendido',v:cv,c:PAL[0]},{n:'Sueldos',v:su,c:PAL[1]},{n:'Local y tarjetas',v:ga,c:PAL[3]},{n:gan>=0?'Ganancia':'Pérdida',v:Math.abs(gan),c:gan>=0?PAL[2]:PAL[4]}].filter(x=>x.v>0),
+  ()=>'$'+m(gan), x=>'$'+m(x.v));
+dona('g-cat',D.cat.map(x=>({n:x.nombre.replace('C/','con ').replace('S/','sin ').replace('Pasteleria','Pastelería'),v:x.neto})),t=>LZ.clp(t));
+dona('g-med',D.medios.map(x=>({n:x.nombre,v:x.bruto})),t=>LZ.clp(t));
+// cascada
+(function(){const pasos=[['Vendiste',0,neto,PAL[0]],[['Costo de','lo vendido'],neto-cv,neto,PAL[4]],['Sueldos',neto-cv-su,neto-cv,PAL[4]],[['Local y','tarjetas'],neto-cv-su-ga,neto-cv-su,PAL[4]],[gan>=0?'Te quedó':'Pérdida',Math.min(0,gan),Math.max(0,gan),gan>=0?PAL[2]:PAL[4]]];
+new Chart(document.getElementById('g-cascada'),{type:'bar',data:{labels:pasos.map(p=>p[0]),datasets:[{data:pasos.map(p=>[p[1],p[2]]),backgroundColor:pasos.map(p=>p[3]),borderRadius:4,borderSkipped:false,maxBarThickness:56}]},
+ options:{plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>{const i=c.dataIndex,v=pasos[i][2]-pasos[i][1];return ' '+(i>0&&i<4?'-':'')+LZ.clp(v)+(neto?' ('+pct(v,neto)+' de la venta)':'')}}}},
+ scales:{x:{grid:{display:false},ticks:{maxRotation:0,autoSkip:false}},y:{beginAtZero:true,ticks:{callback:LZ.corto,maxTicksLimit:6}}}}});})();
+// ventas por día
+new Chart(document.getElementById('g-dias'),{data:{labels:D.dias.map(x=>x.etiqueta),datasets:[
+ {type:'line',label:'Período anterior',data:D.dias_a,borderColor:LZ.tinta2,backgroundColor:LZ.tinta2,borderWidth:2,borderDash:[5,4],pointRadius:0,pointHoverRadius:5,tension:.25,order:1},
+ {type:'bar',label:'Este período',data:D.dias.map(x=>x.neto),backgroundColor:PAL[0],borderRadius:{topLeft:4,topRight:4},maxBarThickness:34,order:2}]},
+ options:{interaction:{mode:'index',intersect:false},plugins:{legend:{reverse:true},tooltip:{callbacks:{label:c=>' '+c.dataset.label+': '+LZ.clp(c.raw||0)+(c.datasetIndex===1&&D.dias[c.dataIndex]?' en '+D.dias[c.dataIndex].tickets+' ventas':'')}}},
+ scales:{x:{grid:{display:false},ticks:{maxRotation:0}},y:{beginAtZero:true,ticks:{callback:LZ.corto,maxTicksLimit:6}}}}});
+// productos
+const gTop=new Chart(document.getElementById('g-top'),{type:'bar',data:{labels:[],datasets:[{data:[],backgroundColor:PAL[0],borderRadius:4,maxBarThickness:22}]},
+ options:{indexAxis:'y',plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>{const x=gTop._items[c.dataIndex];return [' Venta sin IVA: '+LZ.clp(x.neto),' Unidades: '+x.cantidad,' Ganancia: '+(x.ganancia==null?'sin costo cargado':LZ.clp(x.ganancia))]}}}},
+ scales:{x:{beginAtZero:true,ticks:{callback:LZ.corto,maxTicksLimit:6}},y:{grid:{display:false}}}}});
+function orden(o){gTop._items=D.top[o];gTop.data.labels=D.top[o].map(x=>x.producto);gTop.data.datasets[0].data=D.top[o].map(x=>o==='venta'?x.neto:x.ganancia);
+ gTop.data.datasets[0].backgroundColor=o==='venta'?PAL[0]:PAL[2];gTop.update();document.querySelectorAll('[data-o]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.o===o));}
+document.querySelectorAll('[data-o]').forEach(b=>b.addEventListener('click',()=>orden(b.dataset.o)));orden('venta');
+// semanas
+new Chart(document.getElementById('g-sem'),{data:{labels:D.semanas.map(x=>x.etiqueta),datasets:[
+ {type:'line',label:'Ganancia estimada',data:D.semanas.map(x=>x.ganancia),borderColor:PAL[1],backgroundColor:PAL[1],borderWidth:2,pointRadius:4,pointBorderColor:LZ.papel,pointBorderWidth:2,tension:.25,order:1},
+ {type:'bar',label:'Venta sin IVA',data:D.semanas.map(x=>x.neto),backgroundColor:PAL[0],borderRadius:{topLeft:4,topRight:4},maxBarThickness:30,order:2}]},
+ options:{interaction:{mode:'index',intersect:false},plugins:{legend:{reverse:true},tooltip:{callbacks:{label:c=>' '+c.dataset.label+': '+LZ.clp(c.raw)}}},
+ scales:{x:{grid:{display:false},ticks:{maxRotation:0}},y:{beginAtZero:true,ticks:{callback:LZ.corto,maxTicksLimit:6}}}}});
+</script>{% endblock %}

@@ -18,12 +18,12 @@ print("meses con ventas:", ps[0], "a", ps[-1], "| compras SII:", ", ".join(compr
 print("version de la base:", con.execute("PRAGMA user_version").fetchone()[0])
 print("usuarios:", ", ".join(r[0] for r in con.execute("SELECT nombre FROM usuario")))
 mal = 0
-for u in ["/", "/decisiones", "/resultados", "/productos", "/insumos", "/compras", "/costos-fijos", "/impuestos", "/cargar", "/ayuda", "/bot",
-          "/receta?p=Latte"] + [f"/?periodo={p}" for p in ps]:
+for u in ["/", "/?p=mes_pasado", "/?p=90", "/?p=anio", "/?desde=2026-10-05&hasta=2026-10-20", "/mes", "/decisiones", "/resultados", "/productos", "/insumos", "/compras", "/costos-fijos", "/impuestos", "/cargar", "/ayuda", "/bot",
+          "/receta?p=Latte"] + [f"/mes?periodo={p}" for p in ps]:
     r = c.get(u)
     ok = r.status_code == 200
     mal += not ok
-    if not ok or not u.startswith("/?periodo"):
+    if not ok or not u.startswith("/mes?periodo"):
         print(("OK " if ok else "ERROR ") + str(r.status_code), u)
 print("periodos del resumen revisados:", len(ps), "| errores:", mal)
 cfg = F.load_cfg(con)

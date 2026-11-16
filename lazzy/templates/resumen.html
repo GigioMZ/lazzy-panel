@@ -1,8 +1,8 @@
 {% extends "base.html" %}{% block title %}Inicio{% endblock %}{% block main %}
 <div class="cab"><h1>{{per|mesl|capitalize}}</h1>
-<div class="paso"><a href="/?periodo={{ant}}" aria-label="Mes anterior" {% if not ant %}aria-disabled="true"{% endif %}>‹</a>
+<div class="paso"><a href="/mes?periodo={{ant}}" aria-label="Mes anterior" {% if not ant %}aria-disabled="true"{% endif %}>‹</a>
 <form class="fila"><select name="periodo" onchange="this.form.submit()" aria-label="Elegir mes">{% for x in ps|reverse %}<option value="{{x}}" {{'selected' if x==per}}>{{x|mesl}}</option>{% endfor %}</select></form>
-<a href="/?periodo={{sig}}" aria-label="Mes siguiente" {% if not sig %}aria-disabled="true"{% endif %}>›</a></div></div>
+<a href="/mes?periodo={{sig}}" aria-label="Mes siguiente" {% if not sig %}aria-disabled="true"{% endif %}>›</a></div></div>
 
 <p class="veredicto">{{v.titulo}}</p>
 <p class="veredicto-det">{{v.detalle}} {% if v.con_resultado %}{{ tip('ganancia') }}{% endif %}</p>
