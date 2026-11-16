@@ -3,7 +3,10 @@
 <p class="sub">Por el bot entran las facturas, las cuentas y los archivos de FUDO y del SII, sin abrir el panel. Lo que se guarda ahí aparece aquí al instante.</p>
 {% for k,m in msgs %}<p class="aviso {{k}}">{{m}}</p>{% endfor %}
 <section class="bloque"><h2>Claves del bot</h2>
-<p class="sub">{% if claves.telegram and claves.anthropic %}<span class="st ok">Configurado</span> El bot es <b>@{{claves.nombre}}</b>. Solo pega una clave aquí si necesitas cambiarla.{% else %}Pega el token que te dio @BotFather y la clave de la API de Anthropic. Se prueban antes de guardarse y quedan solo en el servidor: el panel no las vuelve a mostrar.{% endif %}</p>
+<p class="sub"><span class="st {{ 'ok' if claves.telegram else 'bad' }}">Token de Telegram {{ 'guardado' if claves.telegram else 'falta' }}</span>
+<span class="st {{ 'ok' if claves.anthropic else 'bad' }}">Clave de Anthropic {{ 'guardada' if claves.anthropic else 'falta' }}</span>
+{% if claves.nombre %} El bot es <b>@{{claves.nombre}}</b>.{% endif %}</p>
+<p class="sub">{% if claves.telegram and claves.anthropic %}Solo pega una clave aquí si necesitas cambiarla.{% else %}Pega lo que falta. Se prueba antes de guardarse y queda solo en el servidor: el panel no lo vuelve a mostrar. El token de Telegram es el texto largo que te dio @BotFather, con la forma 123456789:AAH… (incluye los dos puntos).{% endif %}</p>
 <form class="fila" method="post" autocomplete="off"><input type="hidden" name="csrf" value="{{csrf}}"><input type="hidden" name="accion" value="claves">
 <label>Token de Telegram <input type="password" name="token" style="width:min(300px,70vw)" placeholder="{{ 'guardado' if claves.telegram else '123456:ABC…' }}"></label>
 <label>Clave de Anthropic <input type="password" name="clave" style="width:min(300px,70vw)" placeholder="{{ 'guardada' if claves.anthropic else 'sk-ant-…' }}"></label>
