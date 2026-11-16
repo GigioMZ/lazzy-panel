@@ -41,7 +41,8 @@ un proveedor habitual, o si el mes va bajo la meta.
 
 Comandos:
 /resumen: cómo va la semana
-/deshacer: borra lo último que guardé
+/deshacer: borra lo último que guardé (la factura, su detalle y los costos que cambió)
+Antes de guardar una factura puedes tocar «Corregir cantidad o precio» para arreglar un producto.
 /ayuda: este mensaje
 
 Todo queda en https://panel.lazzycoffee.cl"""
@@ -81,7 +82,15 @@ def botones_confirmar(cid, d):
     if d.get("clase") == "documento":
         fila.append({"text": "Cambiar categoría", "callback_data": f"cat:{cid}"})
     fila.append({"text": "Descartar", "callback_data": f"no:{cid}"})
+    if d.get("clase") == "documento" and d.get("lineas"):
+        return [fila, [{"text": "✏️ Corregir cantidad o precio", "callback_data": f"ed:{cid}"}]]
     return [fila]
+
+
+def botones_lineas(cid, d):
+    filas = [[{"text": f"{x.get('cantidad') or 0:g} × {x['descripcion']}"[:40], "callback_data": f"ln:{cid}:{i}"}]
+             for i, x in enumerate(d["lineas"][:12])]
+    return filas + [[{"text": "‹ Volver", "callback_data": f"vol:{cid}"}]]
 
 
 def botones_categoria(cid):
@@ -134,6 +143,11 @@ class Bot:
             return self.tg.enviar(chat, "Este bot es privado. Para usarlo, entra al panel, abre «Bot de Telegram» y mándame el código con /vincular.")
         usuario = u["usuario"]
         try:
+            pend = self.pendiente_edicion(chat)
+            if pend and (m.get("document") or m.get("photo") or texto.startswith("/")):
+                self.pendiente_edicion(chat, borrar=True)
+            elif pend and texto:
+                return self.corregir(chat, texto, pend)
             if texto in ("/start", "/ayuda", "/help"):
                 return self.tg.enviar(chat, AYUDA)
             if texto in ("/resumen", "/semana"):
@@ -254,6 +268,21 @@ class Bot:
             self.con.execute("UPDATE captura SET estado='descartado' WHERE id=?", (cid,))
             self.con.commit()
             return self.tg.editar(chat, msg, C.resumen_propuesta(d) + "\n\nDescartado.")
+        if accion == "ed":
+            return self.tg.editar(chat, msg, C.resumen_propuesta(d) + "\n\n¿Qué producto quieres corregir?", botones_lineas(cid, d))
+        if accion == "vol":
+            self.pendiente_edicion(chat, borrar=True)
+            return self.tg.editar(chat, msg, C.resumen_propuesta(d), botones_confirmar(cid, d))
+        if accion == "ln":
+            i = int(partes[2])
+            if i >= len(d.get("lineas", [])):
+                return
+            self.con.execute("INSERT OR REPLACE INTO parametro VALUES (?,?)", (f"edit_{chat}", f"{cid}:{i}"))
+            self.con.commit()
+            x = d["lineas"][i]
+            return self.tg.editar(chat, msg, C.resumen_propuesta(d) + f"\n\n✏️ {x['descripcion']}: escríbeme lo correcto, por ejemplo "
+                                  "«24 x 2900» (cantidad y precio sin IVA), «precio 2900», «precio 3451 con iva», «cantidad 24» o «quitar».",
+                                  [[{"text": "‹ Volver", "callback_data": f"vol:{cid}"}]])
         if accion == "cat":
             return self.tg.editar(chat, msg, C.resumen_propuesta(d) + "\n\nElige la categoría:", botones_categoria(cid))
         if accion == "set":
@@ -269,6 +298,30 @@ class Bot:
             self.con.execute("UPDATE captura SET estado='guardado', resultado=? WHERE id=?", (json.dumps(r["ref"]), cid))
             self.con.commit()
             return self.tg.editar(chat, msg, C.resumen_propuesta(d) + f"\n\n✅ {r['texto']}")
+
+    def pendiente_edicion(self, chat, borrar=False):
+        r = self.con.execute("SELECT valor FROM parametro WHERE clave=?", (f"edit_{chat}",)).fetchone()
+        if borrar and r:
+            self.con.execute("DELETE FROM parametro WHERE clave=?", (f"edit_{chat}",))
+            self.con.commit()
+        return r["valor"] if r else None
+
+    def corregir(self, chat, texto, pend):
+        cid, i = (int(x) for x in pend.split(":"))
+        fila = self.con.execute("SELECT * FROM captura WHERE id=? AND chat_id=? AND estado='pendiente'", (cid, chat)).fetchone()
+        if not fila:
+            self.pendiente_edicion(chat, borrar=True)
+            return self.tg.enviar(chat, "Esa factura ya no está pendiente.")
+        d = json.loads(fila["datos"])
+        cambios = C.parsear_edicion(texto)
+        if not cambios or i >= len(d["lineas"]):
+            return self.tg.enviar(chat, "No entendí la corrección. Escribe por ejemplo «24 x 2900», «precio 2900», «cantidad 24» o «quitar».")
+        hecho = C.editar_linea(d, i, cambios)
+        d["cambios_precio"] = C.cambios_precio(self.con, d)
+        self.con.execute("UPDATE captura SET datos=? WHERE id=?", (json.dumps(d, ensure_ascii=False), cid))
+        self.con.commit()
+        self.pendiente_edicion(chat, borrar=True)
+        self.tg.enviar(chat, hecho + "\n\n" + C.resumen_propuesta(d), botones_confirmar(cid, d))
 
     def deshacer(self, chat):
         f = self.con.execute("SELECT * FROM captura WHERE chat_id=? AND estado='guardado' ORDER BY id DESC LIMIT 1", (chat,)).fetchone()

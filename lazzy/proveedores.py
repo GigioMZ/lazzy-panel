@@ -1,6 +1,7 @@
 """Proveedores: alias, productos comprados con su historial de precio, y vínculo de cada línea de factura
 con un producto de la carta o un insumo de receta, para que los costos se actualicen solos con cada factura."""
 import difflib
+import json
 import re
 from datetime import date
 
@@ -172,6 +173,36 @@ def recalcular(con, rut, clave, avisar=False):
                              f"de ${c['antes']:,} a ${c['ahora']:,} sin IVA. Ya actualicé el costo.".replace(",", "."))
         con.commit()
     return cambios
+
+
+def revertir(con, rut, folio, fecha):
+    """Al deshacer una factura: quita del historial los costos que puso, vuelve al costo anterior y borra su evento."""
+    for v in con.execute("SELECT * FROM vinculo WHERE rut=?", (rut,)).fetchall():
+        if lineas(con, rut, v["clave"]) and any(l["fecha_doc"] == fecha for l in lineas(con, rut, v["clave"])):
+            continue                      # otra factura del mismo día sigue respaldando ese costo
+        if v["tipo"] == "producto":
+            con.execute("DELETE FROM producto_costo_hist WHERE producto=? AND desde=? AND fuente='factura'", (v["destino"], fecha))
+            act = con.execute("SELECT * FROM producto_costo WHERE producto=?", (v["destino"],)).fetchone()
+            if act and act["fuente"] == "factura" and act["actualizado"] == fecha:
+                prev = con.execute("SELECT * FROM producto_costo_hist WHERE producto=? ORDER BY desde DESC LIMIT 1", (v["destino"],)).fetchone()
+                if prev:
+                    con.execute("UPDATE producto_costo SET costo=?, fuente=?, actualizado=? WHERE producto=?",
+                                (prev["costo"], prev["fuente"], prev["desde"], v["destino"]))
+                else:
+                    con.execute("DELETE FROM producto_costo WHERE producto=?", (v["destino"],))
+        else:
+            iid = int(v["destino"])
+            act = con.execute("SELECT * FROM insumo WHERE id=?", (iid,)).fetchone()
+            if act and act["actualizado"] == fecha:
+                con.execute("DELETE FROM insumo_hist WHERE insumo_id=? AND desde=?", (iid, fecha))
+                prev = con.execute("SELECT * FROM insumo_hist WHERE insumo_id=? ORDER BY desde DESC LIMIT 1", (iid,)).fetchone()
+                if prev:
+                    con.execute("UPDATE insumo SET precio_formato=?, actualizado=? WHERE id=?", (prev["precio_formato"], prev["desde"], iid))
+    for e in con.execute("SELECT id, datos FROM evento WHERE tipo='costo' AND fecha=?", (fecha,)).fetchall():
+        d = json.loads(e["datos"] or "{}")
+        if d.get("rut") == rut and d.get("folio") == folio:
+            con.execute("DELETE FROM evento WHERE id=?", (e["id"],))
+    con.commit()
 
 
 def recalcular_factura(con, rut, avisar=False):

@@ -281,6 +281,7 @@ def guardar(con, d, usuario=None):
             con.execute("INSERT INTO proveedor(rut,nombre,categoria) VALUES (?,?,?) ON CONFLICT(rut) DO UPDATE SET categoria=excluded.categoria",
                         (d["rut"], d["razon_social"], d["categoria"]))
         ya = con.execute("SELECT 1 FROM compra WHERE tipo_doc=? AND rut=? AND folio=?", (td, d["rut"], d["folio"])).fetchone()
+        tenia = con.execute("SELECT 1 FROM factura_linea WHERE tipo_doc=? AND rut=? AND folio=?", (td, d["rut"], d["folio"])).fetchone()
         if not ya:
             con.execute("INSERT INTO compra(periodo,tipo_doc,rut,razon_social,folio,fecha_doc,exento,neto,iva_rec,iva_no_rec,"
                         "total,activo_fijo_neto,categoria,origen) VALUES (?,?,?,?,?,?,?,?,?,0,?,0,NULL,'bot')",
@@ -300,7 +301,8 @@ def guardar(con, d, usuario=None):
         for c in cambios:
             txt += (f"\nActualicé el costo de {c['etiqueta']}: de ${c['antes']:,} a ${c['ahora']:,} sin IVA "
                     f"({c['variacion']:+.0f}%). Queda en Seguimiento.").replace(",", ".")
-        return {"texto": txt, "ref": {"tipo": "compra", "tipo_doc": td, "rut": d["rut"], "folio": d["folio"], "nueva": not ya}}
+        return {"texto": txt, "ref": {"tipo": "compra", "tipo_doc": td, "rut": d["rut"], "folio": d["folio"], "nueva": not ya,
+                                   "detalle_nuevo": not tenia, "fecha": d["fecha"]}}
     # boleta, cuenta de servicio u otro sin factura: gasto sin crédito de IVA
     monto = d["total"] or d["neto"]
     if not monto:
@@ -313,10 +315,63 @@ def guardar(con, d, usuario=None):
             "ref": {"tipo": "gasto", "id": cur.lastrowid}}
 
 
+_NUM = r"\$?\s*(\d{1,3}(?:\.\d{3})+(?:,\d+)?|\d+(?:,\d+)?)"
+
+
+def _num(t):
+    return float(t.replace(".", "").replace(",", "."))
+
+
+def parsear_edicion(texto):
+    """«24 x 2900», «24 a $2.900», «cantidad 24», «precio 2900 con iva», «quitar». Devuelve los cambios o None."""
+    t = texto.lower().strip()
+    if re.fullmatch(r"(quitar|borrar|eliminar|sacar)( l[ií]nea| producto)?\.?", t):
+        return {"quitar": True}
+    out = {}
+    m = re.search(_NUM + r"\s*(?:x|por|a|unidades a|un a|uds a)\s*" + _NUM, t)
+    if m:
+        out = {"cantidad": _num(m.group(1)), "precio": _num(m.group(2))}
+    else:
+        m = re.search(r"\b(?:cantidad|cant|unidades|son)\b\D{0,6}?" + _NUM, t)
+        if m:
+            out["cantidad"] = _num(m.group(1))
+        m = re.search(r"(?:\bprecio|\bvalor|c/u|\bcada un[oa])\D{0,8}?" + _NUM, t)
+        if m:
+            out["precio"] = _num(m.group(1))
+    if not out:
+        return None
+    if "precio" in out and re.search(r"con iva|iva incluido|bruto", t):
+        out["precio"] = round(out["precio"] / (1 + IVA), 1)
+    return out
+
+
+def editar_linea(d, i, cambios):
+    """Aplica una corrección a la línea i de la propuesta. Los totales de la factura no cambian (son los del SII)."""
+    ln = d["lineas"][i]
+    if cambios.get("quitar"):
+        d["lineas"].pop(i)
+        return f"Quité «{ln['descripcion']}» del detalle."
+    if "cantidad" in cambios:
+        ln["cantidad"] = cambios["cantidad"]
+    if "precio" in cambios:
+        ln["precio_neto"] = cambios["precio"]
+    if ln.get("cantidad") and ln.get("precio_neto"):
+        ln["total_neto"] = round(ln["cantidad"] * ln["precio_neto"])
+    d["editado"] = True
+    return (f"Corregido: {ln.get('cantidad') or 0:g} × {ln['descripcion']} a ${round(ln.get('precio_neto') or 0):,} c/u sin IVA.").replace(",", ".")
+
+
 def deshacer(con, ref, creado=None):
-    if ref["tipo"] == "compra" and ref.get("nueva"):
-        con.execute("DELETE FROM factura_linea WHERE tipo_doc=? AND rut=? AND folio=?", (ref["tipo_doc"], ref["rut"], ref["folio"]))
-        con.execute("DELETE FROM compra WHERE tipo_doc=? AND rut=? AND folio=? AND origen='bot'", (ref["tipo_doc"], ref["rut"], ref["folio"]))
+    """Borra lo que guardó el bot. Si la factura ya estaba por el SII, queda la factura y se va solo el detalle que
+    agregó el bot. También devuelve los costos que esa factura había actualizado."""
+    if ref["tipo"] == "compra":
+        if ref.get("nueva") or ref.get("detalle_nuevo"):
+            con.execute("DELETE FROM factura_linea WHERE tipo_doc=? AND rut=? AND folio=?", (ref["tipo_doc"], ref["rut"], ref["folio"]))
+        if ref.get("nueva"):
+            con.execute("DELETE FROM compra WHERE tipo_doc=? AND rut=? AND folio=? AND origen='bot'", (ref["tipo_doc"], ref["rut"], ref["folio"]))
+        if ref.get("fecha") and (ref.get("nueva") or ref.get("detalle_nuevo")):
+            from .proveedores import revertir
+            revertir(con, ref["rut"], ref["folio"], ref["fecha"])
     elif ref["tipo"] == "gasto":
         con.execute("DELETE FROM gasto_manual WHERE id=? AND origen='bot'", (ref["id"],))
     elif ref["tipo"] == "gastos" and creado:
@@ -351,6 +406,11 @@ def resumen_propuesta(d):
         t.append(f"\n⚠️ {c['descripcion']} {flecha} {abs(c['variacion']):.0f}%: de {clp(round(c['antes']))} a {clp(round(c['ahora']))} sin IVA (antes: {c['desde']}).")
     if d.get("duplicada"):
         t.append("\nEsta factura ya está en el panel (llegó por el SII o se mandó antes). Si confirmas, solo se guarda el detalle.")
+    if d.get("editado") and d.get("neto"):
+        suma = sum(x.get("total_neto") or 0 for x in d.get("lineas", []))
+        if abs(suma - d["neto"] - d.get("exento", 0)) > max(50, d["neto"] * 0.01):
+            t.append(f"\nEl detalle corregido suma {clp(round(suma))} sin IVA y la factura dice {clp(d['neto'])}. El total de la factura "
+                     "no cambia; los costos de los productos usan el detalle corregido.")
     for a in d.get("avisos", []):
         t.append(f"\n❗ {a}")
     return "\n".join(t)

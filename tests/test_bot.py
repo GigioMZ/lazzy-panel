@@ -167,3 +167,63 @@ def test_claves_en_archivo_privado(tmp_path, monkeypatch):
     with pytest.raises(ValueError):
         claves.guardar("malo", None)
     assert claves.leer()["TELEGRAM_TOKEN"] == "123:abc"
+
+
+def _pdf(bot, resp, datos):
+    resp.append(dict(datos))
+    bot.procesar({"message": {"chat": {"id": 7}, "document": {"file_id": "f", "file_name": "f.pdf", "mime_type": "application/pdf"}}})
+
+
+def test_corregir_un_producto_antes_de_guardar(entorno):
+    con, tg, bot, resp = entorno
+    _pdf(bot, resp, FACTURA)
+    botones = tg.enviados[-1][2]
+    assert botones[1][0]["callback_data"].startswith("ed:")
+    cid = botones[0][0]["callback_data"].split(":")[1]
+    assert "¿Qué producto quieres corregir?" in boton(bot, tg, f"ed:{cid}")
+    assert "escríbeme lo correcto" in boton(bot, tg, f"ln:{cid}:0")
+    bot.procesar({"message": {"chat": {"id": 7}, "text": "no sé"}})
+    assert "No entendí la corrección" in tg.enviados[-1][1]
+    bot.procesar({"message": {"chat": {"id": 7}, "text": "24 x 2900"}})
+    assert "Corregido: 24 × Cheesecake Berries Individual a $2.900" in tg.enviados[-1][1]
+    assert "El detalle corregido suma" in tg.enviados[-1][1]
+    boton(bot, tg, f"ln:{cid}:3")
+    bot.procesar({"message": {"chat": {"id": 7}, "text": "quitar"}})
+    boton(bot, tg, f"ok:{cid}")
+    filas = con.execute("SELECT texto, cantidad, precio_neto FROM factura_linea ORDER BY n").fetchall()
+    assert len(filas) == 3 and tuple(filas[0]) == ("Cheesecake Berries Individual", 24, 2900)
+    assert con.execute("SELECT neto FROM compra WHERE folio=6176").fetchone()[0] == 104496      # el total de la factura no cambia
+    resp.append({"gastos": [{"concepto": "Luz", "categoria": "servicios", "monto": 250730}]})
+    bot.procesar({"message": {"chat": {"id": 7}, "text": "luz 250730"}})                         # ya no hay edición pendiente
+    assert "No entendí la corrección" not in tg.enviados[-1][1]
+
+
+def test_deshacer_devuelve_costos_y_detalle(entorno):
+    from lazzy import proveedores as PV
+    con, tg, bot, resp = entorno
+    con.execute("INSERT INTO venta_producto(fecha,categoria,producto,cantidad,bruto) VALUES ('2026-11-01','Pasteleria','Cheesecake berries',5,22450)")
+    _pdf(bot, resp, FACTURA)
+    boton(bot, tg, "ok:" + tg.enviados[-1][2][0][0]["callback_data"].split(":")[1])
+    PV.vincular(con, "77323879-0", "cheesecake berries individual", "producto", "Cheesecake berries", 1)
+    costo1 = con.execute("SELECT costo FROM producto_costo WHERE producto='Cheesecake berries'").fetchone()[0]
+    f2 = dict(FACTURA, folio=6200, fecha="2026-11-12", lineas=[{"descripcion": "Cheesecake Berries Individual", "cantidad": 24,
+                                                                "precio_unitario": 3500, "total_linea": 84000}], neto=70588, iva=13412, total=84000)
+    _pdf(bot, resp, f2)
+    boton(bot, tg, "ok:" + tg.enviados[-1][2][0][0]["callback_data"].split(":")[1])
+    assert con.execute("SELECT costo FROM producto_costo WHERE producto='Cheesecake berries'").fetchone()[0] > costo1
+    assert con.execute("SELECT COUNT(*) FROM evento WHERE tipo='costo'").fetchone()[0] == 1
+    bot.procesar({"message": {"chat": {"id": 7}, "text": "/deshacer"}})
+    assert con.execute("SELECT COUNT(*) FROM compra WHERE folio=6200").fetchone()[0] == 0
+    assert con.execute("SELECT COUNT(*) FROM factura_linea WHERE folio=6200").fetchone()[0] == 0
+    assert con.execute("SELECT costo FROM producto_costo WHERE producto='Cheesecake berries'").fetchone()[0] == costo1
+    assert con.execute("SELECT COUNT(*) FROM evento WHERE tipo='costo'").fetchone()[0] == 0
+    # factura que ya estaba por el SII: al deshacer se va el detalle que puso el bot y la factura queda
+    con.execute("INSERT INTO compra VALUES ('2026-11',33,'77323879-0','Ana',6300,'2026-11-14',0,70588,13412,0,84000,0,NULL,'sii')")
+    _pdf(bot, resp, dict(f2, folio=6300, fecha="2026-11-14"))
+    assert "ya está en el panel" in tg.enviados[-1][1]
+    boton(bot, tg, "ok:" + tg.enviados[-1][2][0][0]["callback_data"].split(":")[1])
+    assert con.execute("SELECT COUNT(*) FROM factura_linea WHERE folio=6300").fetchone()[0] == 1
+    bot.procesar({"message": {"chat": {"id": 7}, "text": "/deshacer"}})
+    assert con.execute("SELECT COUNT(*) FROM factura_linea WHERE folio=6300").fetchone()[0] == 0
+    assert con.execute("SELECT COUNT(*) FROM compra WHERE folio=6300").fetchone()[0] == 1
+    assert con.execute("SELECT costo FROM producto_costo WHERE producto='Cheesecake berries'").fetchone()[0] == costo1

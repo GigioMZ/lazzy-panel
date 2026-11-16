@@ -1,4 +1,4 @@
-{% extends "base.html" %}{% block title %}Inicio{% endblock %}{% block main %}
+{% extends "base.html" %}{% block title %}Cierre del mes{% endblock %}{% block main %}
 <div class="cab"><h1>{{per|mesl|capitalize}}</h1>
 <div class="paso"><a href="/mes?periodo={{ant}}" aria-label="Mes anterior" {% if not ant %}aria-disabled="true"{% endif %}>‹</a>
 <form class="fila"><select name="periodo" onchange="this.form.submit()" aria-label="Elegir mes">{% for x in ps|reverse %}<option value="{{x}}" {{'selected' if x==per}}>{{x|mesl}}</option>{% endfor %}</select></form>
