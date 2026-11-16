@@ -1,0 +1,47 @@
+{% extends "base.html" %}{% from "_m.html" import cat_select %}{% block title %}{{nombre}}{% endblock %}{% block main %}
+<p class="migas"><a href="/compras">Facturas y proveedores</a></p>
+<div class="cab"><h1>{{nombre}}</h1></div>
+<p class="sub">{% if alias %}{{info.razon}} · {% endif %}RUT {{rut}}. {{info.n}} facturas{% if info.desde %} desde el {{info.desde[8:10]}}-{{info.desde[5:7]}}-{{info.desde[:4]}}{% endif %}, {{info.neto|clp}} sin IVA en total. Te vende: <b>{{cat|cat}}</b>.</p>
+{% if msg %}<p class="aviso ok">{{msg}}</p>{% endif %}
+<div class="dos bloque">
+<form class="panel" method="post" action="/proveedor/alias"><input type="hidden" name="csrf" value="{{csrf}}"><input type="hidden" name="rut" value="{{rut}}">
+<label class="campo"><span>Nombre comercial {{tip('alias')}}</span><span class="fila"><input name="alias" value="{{alias}}" placeholder="{{info.razon}}" maxlength="60"> <button class="btn">Guardar</button></span></label>
+<p class="nota">Déjalo vacío para usar la razón social.</p></form>
+<form class="panel" method="post" action="/compras/proveedor"><input type="hidden" name="csrf" value="{{csrf}}"><input type="hidden" name="rut" value="{{rut}}"><input type="hidden" name="nombre" value="{{info.razon}}"><input type="hidden" name="volver" value="/proveedor?rut={{rut}}">
+<label class="campo"><span>Qué te vende {{tip('categoria')}}</span>{{ cat_select(cat, auto=true) }}</label></form>
+</div>
+<section class="bloque"><h2>Compras por mes, sin IVA</h2><div class="grafico" style="height:220px"><canvas id="gMeses" role="img" aria-label="Compras a {{nombre}} por mes"></canvas></div></section>
+<section class="bloque"><h2>Qué le compras</h2>
+{% if prods %}<p class="sub">Precios sin IVA por la unidad que dice la factura. En «Es en la carta» le dices al panel a qué producto o insumo corresponde: desde ahí, cada factura nueva actualiza sola su costo. {{tip('vinculo')}}</p>
+<form method="post" action="/proveedor/vinculos"><input type="hidden" name="csrf" value="{{csrf}}"><input type="hidden" name="rut" value="{{rut}}">
+<div class="tabla vinc"><table><tr><th class="l">Producto en la factura</th><th>Último precio</th><th>Antes</th><th>Cambio</th><th>Comprado</th><th>Última vez</th><th class="l">Es en la carta {{tip('vinculo')}}</th><th>Divide por {{tip('divisor')}}</th></tr>
+{% for x in prods %}{% set v = x.vinculo %}{% set sel = (v.tipo ~ ':' ~ v.destino) if v else ((x.sugerido.tipo ~ ':' ~ x.sugerido.destino) if x.sugerido else '') %}
+<tr class="{{'falta' if not v}}"><td class="l w">{{x.texto}}<input type="hidden" name="clave" value="{{x.clave}}"></td><td>{{x.ultimo|clp}}</td><td>{{x.anterior|clp}}</td>
+<td>{% if x.cambio is not none %}<span class="delta {{'baja' if x.cambio > 0 else 'sube'}}">{{'+' if x.cambio > 0}}{{x.cambio|pct}}</span>{% else %}—{% endif %}</td>
+<td>{{x.cantidad|num}} en {{x.veces}} factura{{'s' if x.veces != 1}}</td><td>{{x.fecha[8:10]}}-{{x.fecha[5:7]}}-{{x.fecha[:4]}}</td>
+<td class="l"><select name="d:{{x.clave}}" aria-label="Producto o insumo para {{x.texto}}"><option value="">No es de la carta</option>
+<optgroup label="Productos de la carta">{% for p in lista_p %}<option value="producto:{{p}}" {{'selected' if sel == 'producto:' ~ p}}>{{p}}</option>{% endfor %}</optgroup>
+<optgroup label="Insumos de receta">{% for i in lista_i %}<option value="insumo:{{i.id}}" {{'selected' if sel == 'insumo:' ~ i.id}}>{{i.nombre}} ({{i.cantidad_formato|num}} {{i.unidad}})</option>{% endfor %}</optgroup></select>
+{% if x.sugerido and not v %}<br><span class="nota">Sugerido, revisa y guarda</span>{% endif %}</td>
+<td><input name="x:{{x.clave}}" value="{{(v.divisor if v else 1)|round(2)|string|replace('.0','')}}" inputmode="decimal" size="4" aria-label="Divide el precio por"></td></tr>{% endfor %}</table></div>
+<p class="fila"><button class="btn">Guardar vínculos</button> <span class="nota">Solo se guardan las filas que cambiaste o tienen sugerencia.</span></p></form>
+{% else %}<p class="aviso">Todavía no hay detalle de productos de este proveedor. Llega cuando Javi manda la factura al bot, o subiendo las facturas antiguas en <a href="/cargar">Subir archivos</a>.</p>{% endif %}</section>
+{% if hay_hist %}<section class="bloque"><h2>Cómo cambió el precio</h2><p class="sub">Los productos que más le compras, sin IVA.</p><div class="grafico" style="height:260px"><canvas id="gPrecios" role="img" aria-label="Historial de precios de {{nombre}}"></canvas></div></section>{% endif %}
+<section class="bloque"><h2>Últimas facturas</h2><div class="tabla"><table><tr><th>Fecha</th><th class="l">Documento</th><th>Sin IVA</th><th>Total</th><th class="l">Detalle</th></tr>
+{% for c in facturas %}<tr><td>{{c.fecha_doc[8:10]}}-{{c.fecha_doc[5:7]}}-{{c.fecha_doc[:4]}}</td><td class="l">{{'Nota de crédito' if c.tipo_doc == 61 else 'Factura'}} {{c.folio}}</td><td>{{c.neto|clp}}</td><td>{{c.total|clp}}</td>
+<td class="l w">{% if c.detalle %}<details><summary>{{c.detalle|length}} producto{{'s' if c.detalle|length != 1}}</summary><ul class="det">{% for l in c.detalle %}<li>{{l.d}}: {{(l.cantidad or 0)|num}} × {{l.precio_neto|clp}} = {{l.total_neto|clp}}</li>{% endfor %}</ul></details>{% else %}<span class="nota">Sin detalle (llega con el PDF)</span>{% endif %}</td></tr>{% endfor %}</table></div></section>
+{% endblock %}
+{% block js %}<script src="/static/chart.umd.js"></script><script>
+LZ.base();
+var D = {{chart|safe}}, PAL = ['#2f6f9f','#d9772b','#1f9e78','#d6a300','#c94f63','#6a52b8'];
+new Chart(document.getElementById('gMeses'), {type: 'bar', data: {labels: D.meses.map(function (m) { return m.mes.slice(5) + '/' + m.mes.slice(2, 4); }),
+  datasets: [{data: D.meses.map(function (m) { return m.neto; }), backgroundColor: LZ.azul, borderRadius: 4, maxBarThickness: 40}]},
+  options: {plugins: {legend: {display: false}, tooltip: {callbacks: {label: function (c) { return LZ.clp(c.raw) + ' en ' + D.meses[c.dataIndex].n + ' facturas'; }}}},
+    scales: {y: {ticks: {callback: LZ.corto, maxTicksLimit: 5}}, x: {grid: {display: false}}}}});
+if (D.series.length) new Chart(document.getElementById('gPrecios'), {type: 'line', data: {datasets: D.series.map(function (s, i) {
+  return {label: s.n, data: s.d, borderColor: PAL[i], backgroundColor: PAL[i], borderWidth: 2, pointRadius: 4, stepped: 'before'}; })},
+  options: {parsing: {xAxisKey: 'x', yAxisKey: 'y'}, interaction: {mode: 'nearest', intersect: false},
+    plugins: {tooltip: {callbacks: {label: function (c) { return c.dataset.label + ': ' + LZ.clp(c.raw.y) + ' (' + c.raw.x.split('-').reverse().join('-') + ')'; }}}},
+    scales: {x: {type: 'category', labels: Array.from(new Set([].concat.apply([], D.series.map(function (s) { return s.d.map(function (p) { return p.x; }); })))).sort(),
+      ticks: {callback: function (v, i, t) { var x = this.getLabelForValue(v); return x.slice(8, 10) + '/' + x.slice(5, 7); }}}, y: {ticks: {callback: LZ.clp, maxTicksLimit: 6}}}}});
+</script>{% endblock %}

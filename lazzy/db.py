@@ -84,8 +84,29 @@ def _m2(con):
     con.execute("INSERT OR IGNORE INTO parametro VALUES ('rut_empresa', '77618245-1')")
 
 
+def _m3(con):
+    """Alias de proveedores, vínculos factura→producto/insumo, seguimiento de decisiones y avisos."""
+    con.executescript("""
+    CREATE TABLE IF NOT EXISTS proveedor_alias(rut TEXT PRIMARY KEY, alias TEXT NOT NULL);
+    ALTER TABLE factura_linea ADD COLUMN texto TEXT;
+    CREATE TABLE IF NOT EXISTS vinculo(
+      rut TEXT NOT NULL, clave TEXT NOT NULL, tipo TEXT NOT NULL, destino TEXT NOT NULL,
+      divisor REAL NOT NULL DEFAULT 1, PRIMARY KEY(rut, clave));
+    CREATE TABLE IF NOT EXISTS evento(
+      id INTEGER PRIMARY KEY, fecha TEXT NOT NULL, tipo TEXT NOT NULL, producto TEXT, titulo TEXT,
+      datos TEXT, origen TEXT NOT NULL DEFAULT 'auto', nota TEXT, estado TEXT NOT NULL DEFAULT 'activo', creado TEXT);
+    CREATE INDEX IF NOT EXISTS ix_evento ON evento(tipo, producto, fecha);
+    CREATE TABLE IF NOT EXISTS notificacion(id INTEGER PRIMARY KEY, creado TEXT, texto TEXT NOT NULL, enviado TEXT);
+    CREATE TABLE IF NOT EXISTS trabajo(
+      id INTEGER PRIMARY KEY, creado TEXT, tipo TEXT, estado TEXT, total INTEGER, hechos INTEGER, mensaje TEXT);
+    """)
+    # Nombres comerciales confirmados (el resto se pone en la ficha de cada proveedor)
+    con.executemany("INSERT OR IGNORE INTO proveedor_alias VALUES (?,?)",
+                    [("77323879-0", "Cake House"), ("96954210-2", "Surlat")])
+
+
 # Cada cambio de estructura se agrega al final de esta lista; nunca se edita uno ya publicado.
-MIGRACIONES = [_m1, _m2]
+MIGRACIONES = [_m1, _m2, _m3]
 
 
 def migrar(con):

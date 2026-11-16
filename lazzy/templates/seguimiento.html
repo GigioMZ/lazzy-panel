@@ -1,0 +1,47 @@
+{% extends "base.html" %}{% block title %}Seguimiento{% endblock %}{% block main %}
+<div class="cab"><h1>Seguimiento</h1></div>
+<p class="sub">Cada cambio que hacen ustedes o sus proveedores queda aquí, con su efecto medido. Los cambios de precio y los productos nuevos se detectan solos al subir FUDO; las alzas de proveedores, con cada factura. {{tip('seguimiento')}} {{tip('antes_despues')}}</p>
+<nav class="filtros" aria-label="Filtrar por tipo"><a class="chip" href="/seguimiento" aria-pressed="{{'true' if not tipo and not producto else 'false'}}">Todo</a>
+{% for k, n in tipos.items() %}<a class="chip" href="/seguimiento?tipo={{k}}" aria-pressed="{{'true' if tipo == k else 'false'}}">{{n}} <b>{{conteo[k]}}</b></a>{% endfor %}
+{% if producto %}<a class="chip" href="/seguimiento" aria-pressed="true">{{producto}} ✕</a>{% endif %}</nav>
+<details class="panel bloque anotar"><summary><b>Anotar una decisión</b> <span class="nota">una promoción, un cambio de horario, un anuncio, una receta nueva…</span></summary>
+<form method="post"><input type="hidden" name="csrf" value="{{csrf}}"><input type="hidden" name="accion" value="nueva">
+<div class="campos"><label class="campo"><span>Qué hicieron</span><input name="titulo" required maxlength="140" placeholder="Promo café + croissant a $4.990"></label>
+<label class="campo"><span>Desde cuándo</span><input type="date" name="fecha" value="{{hoy}}" required></label>
+<label class="campo"><span>Producto que afecta (opcional)</span><select name="producto"><option value="">Todo el local</option>{% for p in prods %}<option>{{p}}</option>{% endfor %}</select></label></div>
+<label class="campo"><span>Nota (opcional)</span><input name="nota" maxlength="500" placeholder="Por qué lo hicieron o qué esperan que pase"></label>
+<p><button class="btn">Guardar decisión</button> <span class="nota">El efecto se mide solo, con las ventas que vayas subiendo.</span></p></form></details>
+{% for g in grupos %}{% set e0 = g.eventos[0] %}{% set m = g.medida %}{% set p = m.prod if m else none %}{% set ids = g.eventos|map(attribute='id')|join(',') %}
+<article class="seg bloque {{g.veredicto[0]}}">
+<header><span class="seg-tipo">{{tipos['precio'] if g.tipo == 'precio' else tipos[g.tipo]}}</span> <span class="nota">{{g.fecha[8:10]}}-{{g.fecha[5:7]}}-{{g.fecha[:4]}}{% if g.fin != g.fecha %} al {{g.fin[8:10]}}-{{g.fin[5:7]}}{% endif %}{% if e0.origen == 'manual' %} · anotada a mano{% endif %}</span></header>
+<h2>{% if g.tipo == 'precio' and g.eventos|length > 1 %}Cambiaron el precio de {{g.eventos|length}} productos{% else %}{{e0.titulo}}{% endif %}</h2>
+<p class="seg-v">{{g.veredicto[1]}}</p>
+{% if g.tipo == 'costo' %}{% if m.afectados %}<p class="nota">Afecta a: {% for a in m.afectados[:6] %}{{a.producto}} ({{a.uds_mes|num}} al mes, {{'+' if a.delta_unidad > 0}}{{a.delta_unidad|clp}} c/u){{', ' if not loop.last}}{% endfor %}. <a href="/proveedor?rut={{e0.datos.rut}}">Ver proveedor</a></p>{% endif %}
+{% elif m and not m.midiendo and not (p and p.sin_base) %}<div class="seg-kpis">
+{% if p and p.cambio_precio is not none and g.tipo != 'nuevo' %}<div><span class="t">Precio</span><span class="n">{{'+' if p.cambio_precio > 0}}{{p.cambio_precio|pct(0)}}</span></div>{% endif %}
+{% if p %}<div><span class="t">Se venden por día</span><span class="n">{% if g.tipo != 'nuevo' %}{{p.uds_antes|round(1)|string|replace('.',',')}} → {% endif %}{{p.uds_despues|round(1)|string|replace('.',',')}}</span>{% if p.cambio_uds is not none and g.tipo != 'nuevo' %}<span class="delta {{'sube' if p.cambio_uds >= 0 else 'baja'}}">{{'+' if p.cambio_uds > 0}}{{p.cambio_uds|pct(0)}}</span>{% endif %}</div>
+{% if not p.sin_costo %}<div><span class="t">{{'Deja al mes' if g.tipo == 'nuevo' else 'Cambio en lo que deja al mes'}} {{tip('efecto_mes')}}</span><span class="n">{{'+' if p.efecto_mes > 0 and g.tipo != 'nuevo'}}{{(p.contrib_despues * 26)|clp if g.tipo == 'nuevo' else p.efecto_mes|clp}}</span></div>{% endif %}
+{% if p.elasticidad is defined and p.elasticidad is not none and p.elasticidad <= 0 and g.tipo == 'precio' %}<div><span class="t">Sensibilidad {{tip('elasticidad')}}</span><span class="n">{{p.elasticidad|string|replace('.',',')}}</span></div>{% endif %}{% endif %}
+{% if m.local and m.local.cambio is not none %}<div><span class="t">Venta del local por día</span><span class="n">{% if m.local.cambio|abs < 0.5 %}Igual{% else %}{{'+' if m.local.cambio > 0}}{{m.local.cambio|pct(0)}}{% endif %}</span></div>{% endif %}
+</div>{% endif %}
+{% if g.semanas %}<div class="grafico seg-g"><canvas data-i="{{loop.index0}}" role="img" aria-label="Unidades por semana antes y después"></canvas></div>{% endif %}
+{% if g.eventos|length > 1 %}<details><summary>Ver producto por producto</summary><div class="tabla"><table><tr><th class="l">Producto</th><th>Precio antes</th><th>Precio ahora</th><th>Por día antes</th><th>Por día después</th><th>Cambio</th><th>Deja al mes</th></tr>
+{% for e in g.eventos|sort(attribute='producto') %}{% set q = e.medida.prod if e.medida else none %}<tr><td class="l"><a href="/seguimiento?producto={{e.producto|urlencode}}">{{e.producto}}</a></td><td>{{e.datos.antes|clp}}</td><td>{{e.datos.ahora|clp}}</td>
+<td>{{q.uds_antes|round(1) if q else '—'}}</td><td>{{q.uds_despues|round(1) if q else '—'}}</td><td>{% if q and q.cambio_uds is not none %}<span class="delta {{'sube' if q.cambio_uds >= 0 else 'baja'}}">{{'+' if q.cambio_uds > 0}}{{q.cambio_uds|pct(0)}}</span>{% endif %}</td><td>{{q.efecto_mes|clp if q and not q.sin_costo else '—'}}</td></tr>{% endfor %}</table></div></details>{% endif %}
+<footer class="fila"><form method="post" class="fila nota-f"><input type="hidden" name="csrf" value="{{csrf}}"><input type="hidden" name="accion" value="nota"><input type="hidden" name="ids" value="{{ids}}"><input type="hidden" name="volver" value="{{request.url.path}}?{{request.url.query}}">
+<input name="nota" value="{{e0.nota or ''}}" placeholder="Agregar una nota" maxlength="500" aria-label="Nota"><button class="btn sec mini">Guardar nota</button></form>
+<form method="post"><input type="hidden" name="csrf" value="{{csrf}}"><input type="hidden" name="accion" value="ocultar"><input type="hidden" name="ids" value="{{ids}}"><input type="hidden" name="volver" value="{{request.url.path}}?{{request.url.query}}"><button class="btn sec mini" onclick="return confirm('¿Sacar esto del seguimiento?')">No es relevante</button></form></footer>
+</article>{% else %}<p class="aviso">Todavía no hay nada que seguir{{' de este tipo' if tipo}}. Aparece solo al subir el reporte de productos de FUDO o al mandar facturas al bot, o anota una decisión arriba.</p>{% endfor %}
+{% endblock %}
+{% block js %}<script src="/static/chart.umd.js"></script><script>
+LZ.base();
+var S = {{chart|safe}};
+document.querySelectorAll('.seg-g canvas').forEach(function (c) {
+  var d = S[+c.dataset.i]; if (!d || !d.length) return;
+  new Chart(c, {type: 'bar', data: {labels: d.map(function (x) { return x.semana; }), datasets: [{data: d.map(function (x) { return x.valor; }),
+    backgroundColor: d.map(function (x) { return x.despues ? LZ.azul : '#c9c1ae'; }), borderRadius: 4, maxBarThickness: 26}]},
+    options: {plugins: {legend: {display: false}, tooltip: {callbacks: {title: function (i) { return 'Semana del ' + i[0].label + (d[i[0].dataIndex].despues ? ' (después)' : ' (antes)'); },
+      label: function (i) { return d[0].valor > 5000 || d[d.length - 1].valor > 5000 ? LZ.clp(i.raw) : i.raw + ' unidades'; }}}},
+      scales: {x: {grid: {display: false}, ticks: {maxRotation: 0, autoSkip: true}}, y: {ticks: {precision: 0, callback: function (v) { return v >= 10000 ? LZ.corto(v) : v; }}}}}});
+});
+</script>{% endblock %}

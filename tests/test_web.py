@@ -81,8 +81,10 @@ def test_carga_archivo(tmp_path):
            "Monto Neto;Monto IVA Recuperable;Monto Iva No Recuperable;Codigo IVA No Rec.;Monto Total;Monto Neto Activo Fijo\n"
            "1;33;Del Giro;2-7;LECHE SA;5;03/11/2026;x;;0;1000;190;;;1190;\n")
     r = c.post("/cargar", data={"csrf": csrf}, files=[("archivos", ("RCV_COMPRA_REGISTRO_1-9_202611.csv", csv, "text/csv")),
-                                                      ("archivos", ("malo.pdf", b"x", "application/pdf"))])
+                                                      ("archivos", ("malo.docx", b"x", "application/octet-stream")),
+                                                      ("archivos", ("factura.pdf", b"x", "application/pdf"))])
     assert r.status_code == 303
     t = c.get("/cargar").text
     assert "1 documentos de compra, periodo 2026-11" in t and "formato no soportado" in t
+    assert "falta la clave de Anthropic" in t
     assert con.execute("SELECT COUNT(*) FROM compra WHERE periodo='2026-11'").fetchone()[0] == 1

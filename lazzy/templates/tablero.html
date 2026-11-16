@@ -3,19 +3,21 @@
 <div class="cab"><h1>Tablero</h1></div>
 <div class="filtros" role="group" aria-label="Período">{% for k,(t,a,b) in pre.items() %}<a class="chip" href="/?p={{k}}" aria-pressed="{{ 'true' if k==clave else 'false' }}">{{t}}</a>{% endfor %}
 <form class="fila" style="margin-left:auto"><label>Desde <input type="date" name="desde" value="{{d0}}" max="{{ultimo}}"></label><label>hasta <input type="date" name="hasta" value="{{d1}}" max="{{ultimo}}"></label><button class="btn sec">Ver</button></form></div>
-<p class="sub">{{nombre}}: del {{d0.day}}/{{d0.month}} al {{d1.day}}/{{d1.month}}/{{d1.year}} ({{r.dias}} días con ventas). Se compara con los {{n}} días anteriores, del {{a0.day}}/{{a0.month}} al {{a1.day}}/{{a1.month}}.{% if incompleto %} Ventas cargadas hasta el {{ultimo.day}}/{{ultimo.month}}.{% endif %}</p>
+<div class="filtros comparar" role="group" aria-label="Comparar con"><span class="nota">Comparar con</span><a class="chip" href="/?{{base_q}}" aria-pressed="{{'true' if cmp != 'anio' else 'false'}}">Período anterior</a><a class="chip" href="/?{{base_q}}&cmp=anio" aria-pressed="{{'true' if cmp == 'anio' else 'false'}}">Hace un año</a></div>
+<p class="sub">{{nombre}}: del {{d0.day}}/{{d0.month}} al {{d1.day}}/{{d1.month}}/{{d1.year}} ({{r.dias}} días con ventas). {% if sin_comparar %}No hay ventas cargadas de hace un año ({{a0.day}}/{{a0.month}}/{{a0.year}} al {{a1.day}}/{{a1.month}}/{{a1.year}}), así que no hay comparación.{% elif cmp == 'anio' %}Se compara con el mismo período hace un año, del {{a0.day}}/{{a0.month}}/{{a0.year}} al {{a1.day}}/{{a1.month}}/{{a1.year}}{{ ' (mismos días de la semana)' if n <= 45 }}.{% else %}Se compara con los {{n}} días anteriores, del {{a0.day}}/{{a0.month}} al {{a1.day}}/{{a1.month}}.{% endif %}{% if incompleto %} Ventas cargadas hasta el {{ultimo.day}}/{{ultimo.month}}.{% endif %}</p>
 
 <p class="veredicto" style="max-width:none">Vendiste {{r.neto|clp}}, te costó {{r.costo_venta|clp}} y te {{ 'quedaron' if r.ganancia >= 0 else 'faltaron' }} {{r.ganancia|abs|clp}}.</p>
-<p class="veredicto-det">Montos sin IVA. La ganancia es estimada: costo de lo vendido según recetas, y sueldos y gastos repartidos por día. {{ tip('ganancia_est') }}</p>
+<p class="veredicto-det">Montos sin IVA. La ganancia es estimada: costo de lo vendido según la receta o la última factura de cada producto, y sueldos y gastos repartidos por día. {{ tip('ganancia_est') }}</p>
 
 <div class="tarjetas">
-<div class="tarjeta"><div class="t">Vendiste {{ tip('venta_neta') }}</div><div class="n">{{r.neto|clp}}</div><div class="d">{{ delta(var.neto) }} {{r.bruto|clp}} con IVA</div></div>
-<div class="tarjeta"><div class="t">Costo de lo vendido {{ tip('costo_vendido') }}</div><div class="n">{{r.costo_venta|clp}}</div><div class="d">{{ delta(var.costo_venta, true) }} {{ (100*r.costo_venta/r.neto)|pct(0) if r.neto }} de la venta</div></div>
-<div class="tarjeta"><div class="t">Margen bruto {{ tip('margen_periodo') }}</div><div class="n">{{r.margen|clp}}</div><div class="d">{{ delta(var.margen) }} {{r.margen_pct|pct(0)}} de la venta</div></div>
-<div class="tarjeta"><div class="t">Sueldos y gastos {{ tip('sueldos_gastos') }}</div><div class="n">{{(r.sueldos+r.gastos)|clp}}</div><div class="d">sueldos {{r.sueldos|clp}}, local y tarjetas {{r.gastos|clp}}</div></div>
-<div class="tarjeta fuerte"><div class="t">Ganancia estimada {{ tip('ganancia_est') }}</div><div class="n {{ 'malo' if r.ganancia < 0 }}">{{r.ganancia|clp}}</div><div class="d">{{ delta(var.ganancia) }} {{r.ganancia_pct|pct(0)}} de la venta</div></div>
-<div class="tarjeta"><div class="t">Ventas {{ tip('ticket') }}</div><div class="n">{{r.tickets|num}}</div><div class="d">{{ delta(var.tickets) }} promedio {{r.ticket|clp}} con IVA {{ delta(var.ticket) }}</div></div>
+<div class="tarjeta"><div class="t">Vendiste {{ tip('venta_neta') }}</div><div class="n">{{r.neto|clp}}</div><div class="d">{{ delta(var.neto) }} {{r.bruto|clp}} con IVA</div>{{sparks.neto}}</div>
+<div class="tarjeta"><div class="t">Costo de lo vendido {{ tip('costo_vendido') }}</div><div class="n">{{r.costo_venta|clp}}</div><div class="d">{{ delta(var.costo_venta, true) }} {{ (100*r.costo_venta/r.neto)|pct(0) if r.neto }} de la venta</div>{{sparks.costo_venta}}</div>
+<div class="tarjeta"><div class="t">Margen bruto {{ tip('margen_periodo') }}</div><div class="n">{{r.margen|clp}}</div><div class="d">{{ delta(var.margen) }} {{r.margen_pct|pct(0)}} de la venta</div>{{sparks.margen}}</div>
+<div class="tarjeta"><div class="t">Sueldos y gastos {{ tip('sueldos_gastos') }}</div><div class="n">{{(r.sueldos+r.gastos)|clp}}</div><div class="d">sueldos {{r.sueldos|clp}}, local y tarjetas {{r.gastos|clp}}</div>{{sparks.sueldos_gastos}}</div>
+<div class="tarjeta fuerte"><div class="t">Ganancia estimada {{ tip('ganancia_est') }}</div><div class="n {{ 'malo' if r.ganancia < 0 }}">{{r.ganancia|clp}}</div><div class="d">{{ delta(var.ganancia) }} {{r.ganancia_pct|pct(0)}} de la venta</div>{{sparks.ganancia}}</div>
+<div class="tarjeta"><div class="t">Ventas {{ tip('ticket') }}</div><div class="n">{{r.tickets|num}}</div><div class="d">{{ delta(var.tickets) }} promedio {{r.ticket|clp}} con IVA {{ delta(var.ticket) }}</div>{{sparks.tickets}}</div>
 </div>
+<p class="nota">La línea de cada tarjeta muestra las últimas 12 semanas, desde la del {{sem_desde}}.</p>
 
 <section class="bloque dos">
 <div class="panel"><h2>De la venta a la ganancia {{ tip('cascada') }}</h2><div class="grafico"><canvas id="g-cascada" role="img" aria-label="Venta, costos y ganancia del período"></canvas></div></div>
@@ -38,8 +40,7 @@
 <section class="bloque panel"><h2>Últimas 12 semanas</h2><p class="sub">Venta sin IVA por semana y ganancia estimada. Sirve para ver la tendencia sin esperar el cierre del mes.</p>
 <div class="grafico"><canvas id="g-sem" role="img" aria-label="Ventas y ganancia de las últimas doce semanas"></canvas></div></section>
 
-{% if n >= 28 %}<section class="bloque"><h2>Recetas contra facturas {{ tip('recetas_vs_facturas') }}</h2>
-<p class="sub">Según las recetas, lo vendido costó <b>{{r.costo_venta|clp}}</b>. En el mismo período llegaron facturas de insumos por <b>{{r.compras_insumos|clp}}</b>{% if r.compras_insumos and r.costo_venta %} ({{ (100*r.compras_insumos/r.costo_venta)|round|int }}% de lo esperado){% endif %}. Se calculó con costo cargado para el {{r.cobertura|int}}% del costo; el resto se estimó por categoría.</p></section>{% endif %}
+
 {% endblock %}
 {% block js %}<script src="/static/chart.umd.js"></script><script>
 LZ.base();

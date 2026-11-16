@@ -68,6 +68,9 @@ class ErrorLectura(Exception):
 def llamar_modelo(con, contenido, herramienta, tipo):
     """Llama a la API de Anthropic forzando la herramienta, y registra el uso de tokens."""
     clave = os.environ.get("ANTHROPIC_API_KEY")
+    if not clave:                      # el panel lee la clave del mismo archivo que usa el bot
+        from .claves import leer
+        clave = leer().get("ANTHROPIC_API_KEY")
     if not clave:
         raise ErrorLectura("Falta configurar la clave de la API de Anthropic en el servidor.")
     r = httpx.post(API, timeout=120, headers={"x-api-key": clave, "anthropic-version": "2023-06-01"}, json={
@@ -89,9 +92,8 @@ def llamar_modelo(con, contenido, herramienta, tipo):
 
 def texto_pdf(datos):
     import io
-
-    import pypdf
     try:
+        import pypdf
         lector = pypdf.PdfReader(io.BytesIO(datos))
         return "\n".join((p.extract_text() or "") for p in lector.pages[:4]).strip()
     except Exception:
@@ -234,7 +236,7 @@ def guardar(con, d, usuario=None):
         con.commit()
         return {"texto": f"Guardé {n} gasto{'s' if n != 1 else ''}." if n else "Esos gastos ya estaban registrados.",
                 "ref": {"tipo": "gastos"}}
-    if not d.get("categoria"):
+    if not d.get("categoria") and not (es_factura(d) and d.get("historico")):
         raise ErrorLectura("Falta elegir la categoría.")
     if es_factura(d):
         td = tipo_doc(d)
@@ -248,12 +250,19 @@ def guardar(con, d, usuario=None):
                         (d["fecha"][:7], td, d["rut"], d["razon_social"], d["folio"], d["fecha"], d["exento"], d["neto"],
                          d["iva"], d["total"]))
         con.execute("DELETE FROM factura_linea WHERE tipo_doc=? AND rut=? AND folio=?", (td, d["rut"], d["folio"]))
-        con.executemany("INSERT INTO factura_linea VALUES (?,?,?,?,?,?,?,?)",
-                        [(td, d["rut"], d["folio"], i, _clave(x["descripcion"]), x["cantidad"], x["precio_neto"], x["total_neto"])
-                         for i, x in enumerate(d.get("lineas", []))])
+        con.executemany("INSERT INTO factura_linea VALUES (?,?,?,?,?,?,?,?,?)",
+                        [(td, d["rut"], d["folio"], i, _clave(x["descripcion"]), x["cantidad"], x["precio_neto"], x["total_neto"],
+                          x["descripcion"]) for i, x in enumerate(d.get("lineas", []))])
         con.commit()
-        txt = (f"Factura {d['folio']} de {d['razon_social']} ya estaba en el panel; guardé su detalle." if ya else
-               f"Guardé la factura {d['folio']} de {d['razon_social']} por ${d['total']:,} en {CAT_NOMBRE[d['categoria']]}.".replace(",", "."))
+        from .proveedores import nombre as nombre_prov, recalcular_factura
+        cambios = recalcular_factura(con, d["rut"])
+        prov = nombre_prov(con, d["rut"], d["razon_social"])
+        cat = CAT_NOMBRE.get(d.get("categoria"), "sin categoría")
+        txt = (f"Factura {d['folio']} de {prov} ya estaba en el panel; guardé su detalle." if ya else
+               f"Guardé la factura {d['folio']} de {prov} por ${d['total']:,} en {cat}.".replace(",", "."))
+        for c in cambios:
+            txt += (f"\nActualicé el costo de {c['etiqueta']}: de ${c['antes']:,} a ${c['ahora']:,} sin IVA "
+                    f"({c['variacion']:+.0f}%). Queda en Seguimiento.").replace(",", ".")
         return {"texto": txt, "ref": {"tipo": "compra", "tipo_doc": td, "rut": d["rut"], "folio": d["folio"], "nueva": not ya}}
     # boleta, cuenta de servicio u otro sin factura: gasto sin crédito de IVA
     monto = d["total"] or d["neto"]

@@ -32,9 +32,21 @@ def presets(ultimo):
     }
 
 
-def anterior(d0, d1):
+def anterior(d0, d1, modo="periodo"):
+    """Período con que se compara: los n días anteriores, o el mismo período hace un año
+    (52 semanas antes para rangos cortos, así calzan los días de la semana; mismas fechas para rangos largos)."""
     n = (d1 - d0).days + 1
-    return d0 - timedelta(days=n), d0 - timedelta(days=1)
+    if modo != "anio":
+        return d0 - timedelta(days=n), d0 - timedelta(days=1)
+    if n <= 45:
+        return d0 - timedelta(days=364), d1 - timedelta(days=364)
+
+    def atras(d):
+        try:
+            return d.replace(year=d.year - 1)
+        except ValueError:          # 29 de febrero
+            return d.replace(year=d.year - 1, day=28)
+    return atras(d0), atras(d1)
 
 
 def _meses(d0, d1):
@@ -197,5 +209,18 @@ def semanas(con, cfg, ultimo, n=12):
     for i in range(n, 0, -1):
         a = lunes - timedelta(days=7 * i)
         r = resultado(con, cfg, a, a + timedelta(days=6), cache)
-        out.append({"etiqueta": f"{a.day} {MESES[a.month - 1]}", "neto": r["neto"], "margen": r["margen"], "ganancia": r["ganancia"]})
+        out.append({"etiqueta": f"{a.day} {MESES[a.month - 1]}", "neto": r["neto"], "margen": r["margen"], "ganancia": r["ganancia"],
+                    "costo_venta": r["costo_venta"], "sueldos_gastos": r["sueldos"] + r["gastos"], "tickets": r["tickets"]})
     return out
+
+
+def spark(valores, ancho=120, alto=30):
+    """Mini gráfico de línea en SVG para las tarjetas (sin ejes; el detalle está en el gráfico de 12 semanas)."""
+    v = [x for x in valores if x is not None]
+    if len(v) < 2:
+        return ""
+    lo, hi = min(v), max(v)
+    rng = (hi - lo) or 1
+    pts = " ".join(f"{i * ancho / (len(v) - 1):.1f},{alto - 3 - (x - lo) * (alto - 6) / rng:.1f}" for i, x in enumerate(v))
+    return (f'<svg class="spark" viewBox="0 0 {ancho} {alto}" preserveAspectRatio="none" aria-hidden="true">'
+            f'<polyline points="{pts}" vector-effect="non-scaling-stroke"/></svg>')

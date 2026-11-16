@@ -17,6 +17,7 @@ from . import analisis as A
 from . import captura as C
 from . import finance as F
 from . import insights as I
+from . import seguimiento as S
 from .db import connect
 from .glosario import CATEGORIAS_UI
 from .importers.fudo_report import import_fudo_productos, import_fudo_report
@@ -172,7 +173,8 @@ class Bot:
             hojas = openpyxl.load_workbook(ruta, read_only=True).sheetnames
             if "Detalle" in hojas:
                 r = import_fudo_productos(self.con, ruta)
-                return self.tg.enviar(chat, f"Cargué el reporte de productos de FUDO ({r['venta_producto']} filas).\n\n" + estado_datos(self.con))
+                self.tg.enviar(chat, f"Cargué el reporte de productos de FUDO ({r['venta_producto']} filas).\n\n" + estado_datos(self.con))
+                return S.detectar(self.con, avisar_desde=(date.today() - timedelta(days=30)).isoformat())
             if "Evolución de ventas" in hojas:
                 r = import_fudo_report(self.con, ruta)
                 return self.tg.enviar(chat, f"Cargué el reporte de ventas de FUDO ({r['venta_hora']} horas de venta).\n\n" + estado_datos(self.con))
@@ -302,6 +304,19 @@ def toca_resumen(con, ahora):
     return ult != ahora.date().isoformat()
 
 
+def enviar_avisos(con, tg):
+    """Manda los avisos pendientes (cambios de precio, alzas de proveedores) a todos los chats vinculados."""
+    pend = con.execute("SELECT * FROM notificacion WHERE enviado IS NULL ORDER BY id LIMIT 10").fetchall()
+    if not pend:
+        return
+    chats = [r["chat_id"] for r in con.execute("SELECT chat_id FROM telegram_chat")]
+    for n in pend:
+        for c in chats:
+            tg.enviar(c, n["texto"])
+        con.execute("UPDATE notificacion SET enviado=? WHERE id=?", (datetime.now().isoformat(timespec="seconds"), n["id"]))
+        con.commit()
+
+
 def main():
     from . import claves
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -328,6 +343,7 @@ def main():
                 log.info("cambiaron las claves; reiniciando")
                 raise SystemExit(0)
             ahora = datetime.now(ZONA)
+            enviar_avisos(con, tg)
             if toca_resumen(con, ahora):
                 texto = resumen_semana(con)
                 for r in con.execute("SELECT chat_id FROM telegram_chat").fetchall():
