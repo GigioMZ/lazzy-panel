@@ -9,6 +9,7 @@ from . import finance as F
 from . import seguimiento as S
 from .captura import _clave
 
+NO_PRODUCTO = re.compile(r"\b(delivery|despacho|flete|envio|transporte|reparto)\b")
 UMBRAL_EVENTO = 3.0   # % de cambio de precio de proveedor que se registra en Seguimiento
 
 
@@ -45,6 +46,8 @@ def productos(con, rut):
     """Lo que le compramos a un proveedor: último precio, variación, cantidades y vínculo."""
     por = {}
     for ln in lineas(con, rut):
+        if NO_PRODUCTO.search(ln["descripcion"]):      # despacho o flete: es parte de la factura, no un producto
+            continue
         x = por.setdefault(ln["descripcion"], {"clave": ln["descripcion"], "texto": ln.get("texto") or ln["descripcion"].capitalize(),
                                                 "historial": [], "cantidad": 0, "veces": 0})
         x["historial"].append({"fecha": ln["fecha_doc"], "precio": ln["precio_neto"], "folio": ln["folio"]})

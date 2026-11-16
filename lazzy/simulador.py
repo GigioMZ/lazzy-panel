@@ -28,7 +28,7 @@ def elasticidad(con, cfg):
     """La sensibilidad al precio medida en el cambio de precios con más productos (si hay datos suficientes)."""
     S.asegurar(con)
     mejor = None
-    for g in S.lista(con, cfg, "precio"):
+    for g in [x for x in S.lista(con, cfg) if x["tipo"] == "precio"]:
         p = (g.get("medida") or {}).get("prod") or {}
         if p.get("elasticidad") is None or p.get("sin_base") or p.get("pocos_datos") or g["medida"]["midiendo"]:
             continue

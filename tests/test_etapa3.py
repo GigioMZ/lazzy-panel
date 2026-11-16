@@ -143,3 +143,57 @@ def test_ficha_de_producto_e_insumo_desde_factura(tmp_path):
         assert c.get(u).status_code == 200
     c.post("/turnos", data={"csrf": csrf, "accion": "pago", "persona": "Tupaj", "pago": "400.000"})
     assert "vende" in c.get("/costos-fijos").text and con.execute("SELECT valor FROM parametro WHERE clave='pago_Tupaj'").fetchone()[0] == "400000"
+
+
+def test_stock_suma_facturas_resta_ventas_y_mide_merma():
+    from lazzy import stock as ST
+    from lazzy.finance import pnl_mes
+    con = connect(":memory:")
+    con.execute("INSERT INTO producto_costo VALUES ('Brownies', 1000, 'manual', '2026-01-01')")
+    con.execute("INSERT INTO producto_costo VALUES ('Cappuccino', 800, 'manual', '2026-01-01')")
+    for f, p, q, b in (("2026-11-03", "Brownies", 8, 19920), ("2026-11-04", "Cappu + Brownie", 2, 8980), ("2026-11-04", "Cappuccino", 1, 3490)):
+        con.execute("INSERT INTO venta_producto(fecha,categoria,producto,cantidad,bruto) VALUES (?,?,?,?,?)", (f, "Pasteleria", p, q, b))
+    con.execute("INSERT INTO venta_hora(fecha,hora,bruto,tickets) VALUES ('2026-11-03',10,32390,5)")
+    con.execute("INSERT INTO compra VALUES ('2026-11',33,'1-9','CAKE',5,'2026-11-02',0,20000,3800,0,23800,0,NULL,'bot')")
+    con.execute("INSERT INTO factura_linea VALUES (33,'1-9',5,0,'brownie nuez',20,1000,20000,'Brownie Nuez')")
+    con.execute("INSERT INTO vinculo VALUES ('1-9','brownie nuez','producto','Brownies',1)")
+    con.execute("INSERT INTO proveedor(rut,nombre,categoria) VALUES ('1-9','CAKE','pasteleria')")
+    ST.guardar(con, [{"producto": "Brownies", "cantidad": 5, "minimo": 4}], "2026-11-01", "2026-11-01")
+    cfg = load_cfg(con)
+    assert cfg["costo_producto"]["Cappu + Brownie"] == {"costo": 1800, "fuente": "combo"}
+    e = ST.estado(con, cfg, hoy=date(2026, 11, 10))[0]
+    assert (e["entradas"], e["ventas"], e["esperado"], e["valor"]) == (20, 10, 15, 15000)       # 5 + 20 - 8 - 2 del combo
+    assert ST.vista_previa(con, cfg, [{"producto": "Brownies", "cantidad": 12}]) == [("Brownies", 15, 12)]
+    ST.guardar(con, [{"producto": "Brownies", "cantidad": 12, "minimo": 4}], "2026-11-10", "2026-11-10")
+    a = ST.ajustes(con, cfg)[0]
+    assert (a["esperado"], a["contado"], a["dif"], a["valor"]) == (15, 12, -3, -3000)
+    assert ST.merma_mes(con, "2026-11", cfg) == 3000 and ST.valor(con, cfg, "2026-11-30") == 12000
+    p = pnl_mes(con, "2026-11", cfg)
+    assert p["merma"] == 3000 and p["lineas"]["costo_venta"]["Merma y ajustes de stock"] == 3000
+    # las dos cuentas calzan: compras = costo de lo vendido + merma + aumento de stock + diferencia
+    from lazzy import estado as E
+    f = E.puente(con, cfg, "2026-11", ["2026-10", "2026-11"])["filas"][0]
+    assert f["compras"] == 20000 and f["merma"] == 3000 and f["dstock"] is None
+
+
+def test_stock_se_sube_por_el_panel(tmp_path):
+    import openpyxl
+    c, con = client(tmp_path)
+    csrf = login(c)
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Productos"
+    ws.append(["Id.", "Categoría", "Código", "Nombre", "Disponibilidad", "Unidad", "Stock", "Unidad", "Stock Mínimo", "Unidad", "Proveedor"])
+    ws.append([1, "Pasteleria", None, "Brownies", 16, "unid.", 16, "unid.", 4, "unid.", "Cakehouse"])
+    wb.create_sheet("Ingredientes")
+    ruta = tmp_path / "stock.xlsx"
+    wb.save(ruta)
+    c.post("/cargar", data={"csrf": csrf}, files=[("archivos", ("stock.xlsx", ruta.read_bytes(), "application/octet-stream"))])
+    t = c.get("/cargar").text
+    assert "Stock de FUDO" in t and "Es el primer stock" in t
+    import re
+    c.post("/cargar/confirmar", data={"csrf": csrf, "token": re.search(r'name="token" value="([0-9a-f]+)"', t).group(1), "accion": "guardar"})
+    assert con.execute("SELECT cantidad, minimo FROM stock_conteo").fetchone()[:] == (16, 4)
+    t = c.get("/stock").text
+    assert "Brownies" in t and "no tienen una factura vinculada" in t
+    assert c.get("/turnos").status_code == 200 and "Compras de insumos" in c.get("/resultados?periodo=2026-10").text

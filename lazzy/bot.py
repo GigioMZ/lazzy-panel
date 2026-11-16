@@ -21,6 +21,7 @@ from . import alertas as AL
 from . import iva as IVA
 from . import preguntas as P
 from . import seguimiento as S
+from . import stock as ST
 from .db import connect
 from .glosario import CATEGORIAS_UI
 from .importers.fudo_report import import_fudo_productos, import_fudo_report
@@ -32,7 +33,7 @@ AYUDA = """Hola, soy el bot de Lazzy. Me puedes mandar:
 
 • Facturas en PDF o foto: las leo, te muestro lo que entendí y las guardo cuando confirmes.
 • Cuentas (luz, agua, etc.) en foto, o escritas: "luz 250730, agua 33209".
-• Los Excel de FUDO (Ventas y Productos) y el CSV de compras del SII: los cargo al panel.
+• Los Excel de FUDO (Ventas, Productos y Stock) y el CSV de compras del SII: los cargo al panel.
 • El F29 en PDF: lo guardo y lo comparo con lo que estimó el panel.
 • Preguntas: "¿cuánto vendimos la semana pasada?", "¿qué producto deja menos?", "¿cómo va el mes contra la meta?".
 
@@ -197,6 +198,20 @@ class Bot:
             return self.proponer(chat, usuario, C.leer_imagen(self.con, datos, doc["mime_type"]), ruta)
         if bajo.endswith(".xlsx"):
             hojas = openpyxl.load_workbook(ruta, read_only=True).sheetnames
+            if ST.es_stock(ruta):
+                filas = ST.leer(ruta)
+                difs = ST.vista_previa(self.con, F.load_cfg(self.con), filas)
+                primero = not self.con.execute("SELECT 1 FROM stock_conteo LIMIT 1").fetchone()
+                r = ST.guardar(self.con, filas)
+                txt = f"Guardé el stock de {r['productos']} productos."
+                if primero:
+                    txt += " Es el primero: desde aquí sumo las facturas y resto las ventas."
+                elif difs:
+                    txt += "\nDiferencias con lo esperado:\n" + "\n".join(
+                        f"• {p}: esperaba {e:g}, hay {c:g}" for p, e, c in difs[:10]) + "\nLo que falta queda como merma en https://panel.lazzycoffee.cl/stock"
+                else:
+                    txt += " Calza con lo esperado."
+                return self.tg.enviar(chat, txt)
             if "Detalle" in hojas:
                 r = import_fudo_productos(self.con, ruta)
                 self.tg.enviar(chat, f"Cargué el reporte de productos de FUDO ({r['venta_producto']} filas).\n\n" + estado_datos(self.con))

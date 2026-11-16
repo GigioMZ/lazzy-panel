@@ -31,6 +31,7 @@ from . import iva as IVA
 from . import metas as MT
 from . import ofertas as O
 from . import simulador as SIM
+from . import stock as ST
 from . import proveedores as PV
 from . import seguimiento as S
 from .auth import check_password
@@ -62,7 +63,7 @@ T.env.filters["pct"] = lambda x, d=1: "—" if x is None else f"{x:.{d}f}".repla
 MESES = "ene feb mar abr may jun jul ago sep oct nov dic".split()
 T.env.filters["mes"] = lambda p: f"{MESES[int(p[5:7]) - 1]} {p[:4]}"
 T.env.filters["mesl"] = I.mes_largo
-T.env.filters["cat"] = lambda c: CAT_NOMBRE.get(c, "Sin categoría") if c else "Sin categoría"
+T.env.filters["cat"] = lambda c: CAT_NOMBRE.get(c, c) if c else "Sin categoría"
 T.env.filters["grupo"] = lambda g: GRUPO_NOMBRE.get(g, "")
 
 
@@ -75,7 +76,7 @@ def tip(clave):
 
 T.env.globals.update(tip=tip, G=GLOSARIO, CATS_UI=CATEGORIAS_UI, GRUPOS=GRUPO_NOMBRE)
 NAV = [("Ver", [("/", "Tablero"), ("/mes", "Cierre del mes"), ("/decisiones", "Decisiones"), ("/seguimiento", "Seguimiento"), ("/resultados", "Mes a mes"), ("/productos", "Productos"),
-                 ("/impuestos", "IVA")]),
+                 ("/stock", "Stock"), ("/turnos", "Turnos"), ("/impuestos", "IVA")]),
        ("Actualizar", [("/bot", "Bot de Telegram"), ("/cargar", "Subir archivos"), ("/compras", "Facturas y proveedores"),
                        ("/insumos", "Insumos y precios"), ("/costos-fijos", "Gastos fijos")]),
        ("", [("/ayuda", "Ayuda")])]
@@ -324,7 +325,10 @@ def estado_resultados(request):
              "pct": [x["pct"]["resultado"] if x["tiene_compras"] and x["periodo"] < hoy else None for x in serie],
              "actual": [x["periodo"] == per for x in serie]}
     i = ps.index(per)
-    return page(request, "estado.html", e=est, per=per, ps=ps, det=E.detalle(con, cfg, per), comp=E.composicion(est["cur"]),
+    det = E.detalle(con, cfg, per)
+    det.update(E.detalle_costo(est["cur"]))
+    return page(request, "estado.html", e=est, per=per, ps=ps, det=det, comp=E.composicion(est["cur"]),
+                puente=E.puente(con, cfg, per, ps), compras=est["cur"]["compras"],
                 parcial=per >= hoy, ant=ps[i - 1] if i else None, sig=ps[i + 1] if i < len(ps) - 1 else None,
                 anio_ant=E.menos(per, 12), chart=json.dumps(chart), colores=E.COLOR)
 
@@ -555,6 +559,23 @@ async def proveedor_vinculos(request: Request):
     return RedirectResponse(f"/proveedor?rut={rut}", 303)
 
 
+@app.get("/stock", response_class=HTMLResponse)
+def stock_page(request: Request):
+    user(request)
+    con = db()
+    cfg = F.load_cfg(con)
+    filas = ST.estado(con, cfg)
+    aj = [a for a in ST.ajustes(con, cfg) if abs(a["dif"]) >= 1][:60]
+    ult = con.execute("SELECT MAX(fecha) FROM stock_conteo").fetchone()[0]
+    sin_vinculo = [r[0] for r in con.execute(
+        "SELECT DISTINCT s.producto FROM stock_conteo s WHERE NOT EXISTS (SELECT 1 FROM vinculo v WHERE v.tipo='producto' AND v.destino=s.producto) "
+        "ORDER BY 1")]
+    mes = date.today().strftime("%Y-%m")
+    return page(request, "stock.html", filas=filas, ajustes=aj, ultimo=ult, sin_vinculo=sin_vinculo,
+                valor=sum(f["valor"] or 0 for f in filas), merma=ST.merma_mes(con, mes, cfg), mes=mes,
+                dias=(date.today() - date.fromisoformat(ult)).days if ult else None)
+
+
 @app.get("/seguimiento", response_class=HTMLResponse)
 def seguimiento(request: Request):
     user(request)
@@ -564,9 +585,12 @@ def seguimiento(request: Request):
     tipo = request.query_params.get("tipo") or None
     prod = request.query_params.get("producto") or None
     grupos = S.lista(con, cfg, tipo if tipo in S.TIPOS else None, prod)
+    if not prod:                                   # lo que tiene pocos datos va al final, plegado
+        grupos = [g for g in grupos if not g["debil"]] + [g for g in grupos if g["debil"]]
+    n_debiles = 0 if prod else sum(1 for g in grupos if g["debil"])
     conteo = {t: con.execute("SELECT COUNT(*) FROM evento WHERE estado='activo' AND tipo=?", (t,)).fetchone()[0] for t in S.TIPOS}
     prods = [r[0] for r in con.execute("SELECT DISTINCT producto FROM venta_producto ORDER BY producto")]
-    return page(request, "seguimiento.html", grupos=grupos, tipo=tipo, producto=prod, conteo=conteo, tipos=S.TIPOS,
+    return page(request, "seguimiento.html", n_debiles=n_debiles, n_fuertes=len(grupos) - n_debiles, grupos=grupos, tipo=tipo, producto=prod, conteo=conteo, tipos=S.TIPOS,
                 prods=prods, hoy=date.today().isoformat(), chart=json.dumps([g["semanas"] for g in grupos]))
 
 
@@ -605,9 +629,16 @@ async def compras_proveedor(request: Request):
     return RedirectResponse(volver(f, "/compras"), 303)
 
 
+@app.get("/turnos", response_class=HTMLResponse)
+def turnos_page(request: Request):
+    return costos_fijos(request, "turnos.html")
+
+
 @app.get("/costos-fijos", response_class=HTMLResponse)
-def costos_fijos(request: Request):
+def costos_fijos(request: Request, plantilla: str = "costos_fijos.html"):
     user(request)
+    if plantilla not in ("costos_fijos.html", "turnos.html"):
+        plantilla = "costos_fijos.html"
     con = db()
     cfg = F.load_cfg(con)
     ps0 = F.periodos(con)
@@ -620,7 +651,7 @@ def costos_fijos(request: Request):
             x["costo_hora"] = round(x["pago"] / (x["horas_semana"] * 4.33))
             x["veces"] = round(x["por_hora"] / x["costo_hora"], 1) if x["costo_hora"] else None
     horas = {d: GS.horas_por_turno(con, d) for d in range(6)}
-    return page(request, "costos_fijos.html", serv=serv, tur=tur, esp=GS.esperado(con), dias=GS.DIAS,
+    return page(request, plantilla, serv=serv, tur=tur, esp=GS.esperado(con), dias=GS.DIAS,
                 graf=json.dumps({"serv": serv, "horas": horas}), msg=request.session.pop("msg", None),
                 rows=[dict(r) for r in con.execute("SELECT * FROM costo_fijo ORDER BY categoria, nombre")],
                 ppm=cfg["empresa"]["ppm_tasa"] * 100, emp=cfg["empresa"],
@@ -639,7 +670,7 @@ async def turnos_post(request: Request):
         desde, hasta = str(f.get("desde", "")), str(f.get("hasta", ""))
         if not (_re.fullmatch(r"\d{2}:\d{2}", desde) and _re.fullmatch(r"\d{2}:\d{2}", hasta)) or desde >= hasta:
             request.session["msg"] = "Revisa las horas del turno (formato 09:00 y que termine después de empezar)."
-            return RedirectResponse("/costos-fijos#turnos", 303)
+            return RedirectResponse("/turnos", 303)
         dias = [int(d) for d in f.getlist("dia") if str(d).isdigit() and 0 <= int(d) <= 6]
         for d in dias:
             con.execute("INSERT INTO turno(persona,dia,desde,hasta,en_resultado) VALUES (?,?,?,?,?)",
@@ -657,7 +688,7 @@ async def turnos_post(request: Request):
             if v.isdigit():
                 con.execute("INSERT OR REPLACE INTO parametro VALUES (?,?)", (f"esperado_{k}", v))
     con.commit()
-    return RedirectResponse("/costos-fijos#" + ("cuentas" if acc == "esperado" else "turnos"), 303)
+    return RedirectResponse("/costos-fijos#cuentas" if acc == "esperado" else "/turnos", 303)
 
 
 @app.post("/costos-fijos")

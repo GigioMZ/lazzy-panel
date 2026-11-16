@@ -16,7 +16,7 @@ def _base():
     while d < date(2026, 11, 14):
         if d.weekday() < 6:
             f = d.isoformat()
-            con.execute("INSERT INTO venta_hora(fecha,hora,bruto,tickets) VALUES (?,?,?,?)", (f, 10, 119000, 20))
+            con.execute("INSERT INTO venta_hora(fecha,hora,bruto,tickets) VALUES (?,?,?,?)", (f, 10, 77760, 20))
             con.execute("INSERT INTO venta_producto(fecha,categoria,producto,cantidad,bruto) VALUES (?,?,?,?,?)", (f, "Café C/Leche", "Latte", 10, 34900))
             con.execute("INSERT INTO venta_producto(fecha,categoria,producto,cantidad,bruto) VALUES (?,?,?,?,?)", (f, "Pasteleria", "Brownies", 6, 14940))
             con.execute("INSERT INTO venta_producto(fecha,categoria,producto,cantidad,bruto) VALUES (?,?,?,?,?)", (f, "Pasteleria", "Croissant", 2, 5980))
@@ -38,12 +38,17 @@ def test_estado_de_resultados_con_comparaciones_y_detalle():
     ps = ["2026-08", "2026-09", "2026-10", "2026-11"]
     e = E.estado(con, cfg, "2026-10", ps)
     f = {x["nombre"]: x for x in e["filas"]}
-    assert f["Costo de venta"]["actual"] == 1000000 and f["Costo de venta"]["prev"] == 900000
-    assert f["Costo de venta"]["var"] == 11.1 and f["Venta sin IVA"]["pct"] == 100.0
-    assert e["ytd_meses"] == ["2026-08", "2026-09", "2026-10"]
-    assert f["Costo de venta"]["ytd"] == 2700000 and f["Resultado operacional"]["anio"] is None
+    # octubre: 27 días × (10 Latte × 900 + 6 Brownies × 700 + 2 Croissant × 600 + 5 Cappuccino × 800 + 1 combo × 1.500)
+    assert f["Costo de lo vendido"]["actual"] == 27 * (9000 + 4200 + 1200 + 4000 + 1500)
+    assert f["Venta sin IVA"]["pct"] == 100.0 and "Pasteleria" in f and "Promos" in f
+    assert e["ytd_meses"] == ["2026-08", "2026-09", "2026-10"] and f["Resultado operacional"]["anio"] is None
+    assert e["cur"]["compras"]["total"] == 1000000 and e["cur"]["cobertura"] == 100
     det = E.detalle(con, cfg, "2026-10")
     assert det["leche"][0]["doc"] == "Factura 3" and det["remuneraciones"][0]["nombre"] == "Sueldo"
+    assert E.detalle_costo(e["cur"])["Pasteleria"][0]["nombre"] == "Brownies"
+    pu = E.puente(con, cfg, "2026-10", ps)
+    assert len(pu["filas"]) == 3 and pu["filas"][-1]["compras"] == 1000000
+    assert pu["filas"][-1]["dif"] == 1000000 - f["Costo de lo vendido"]["actual"] and pu["alerta"]
     assert sum(x["ancho"] for x in E.composicion(e["cur"])) > 99
 
 

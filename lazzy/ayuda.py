@@ -16,12 +16,16 @@ def rutina(con, hoy=None):
     f29 = con.execute("SELECT 1 FROM f29 WHERE periodo=?", (ant,)).fetchone()
     bot = con.execute("SELECT MAX(fecha_doc) FROM compra WHERE origen='bot'").fetchone()[0]
     pago = IVA.fecha_pago(ant)
+    st = con.execute("SELECT MAX(fecha) FROM stock_conteo").fetchone()[0]
     return [
         {"cuando": "Cada día", "que": "Mandar al bot cada factura apenas llega (PDF o foto) y las cuentas de luz y agua.",
          "ok": bool(bot and (hoy - date.fromisoformat(bot)).days <= 4), "estado": f"última por el bot: {bot}" if bot else "ninguna todavía"},
         {"cuando": "Lunes", "que": "Subir los dos reportes de FUDO (Ventas y Productos), desde el día 1 del mes hasta el domingo.",
          "ok": bool(uv and up and uv >= domingo.isoformat() and up >= domingo.isoformat()),
          "estado": f"cargado hasta el {uv}" if uv else "nada cargado", "url": "/cargar"},
+        {"cuando": "Con cada ajuste y al cierre del mes", "que": "Exportar el stock de FUDO y subirlo (o mandarlo al bot): cuando anoten merma, "
+         "después de contar la vitrina y el último día del mes.", "ok": bool(st and (hoy - date.fromisoformat(st)).days <= 10),
+         "estado": f"último stock: {st}" if st else "todavía no hay stock cargado", "url": "/stock"},
         {"cuando": "Lunes", "que": "Leer el resumen del bot y mirar el Tablero y Seguimiento (5 minutos).", "ok": None, "url": "/"},
         {"cuando": "Primeros días del mes", "que": f"Descargar del SII el registro de compras de {I.mes_largo(ant)} y subirlo.",
          "ok": bool(sii), "estado": "listo" if sii else "falta", "url": "/cargar"},

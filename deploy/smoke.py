@@ -20,7 +20,7 @@ print("usuarios:", ", ".join(r[0] for r in con.execute("SELECT nombre FROM usuar
 mal = 0
 provs = [f"/proveedor?rut={r[0]}" for r in con.execute("SELECT rut FROM compra GROUP BY rut ORDER BY COUNT(*) DESC LIMIT 3")]
 for u in ["/", "/?p=mes_pasado", "/?p=90", "/?p=anio", "/?desde=2026-10-05&hasta=2026-10-20", "/mes", "/decisiones", "/resultados", "/productos", "/insumos", "/compras", "/costos-fijos", "/impuestos", "/cargar", "/ayuda", "/bot",
-          "/receta?p=Latte", "/seguimiento", "/seguimiento?tipo=precio", "/seguimiento?tipo=costo", "/resultados?vista=tabla", "/receta?p=Cappuccino"] + provs + [f"/mes?periodo={p}" for p in ps] + [f"/resultados?periodo={p}" for p in ps]:
+          "/receta?p=Latte", "/seguimiento", "/seguimiento?tipo=precio", "/seguimiento?tipo=costo", "/resultados?vista=tabla", "/receta?p=Cappuccino", "/stock", "/turnos"] + provs + [f"/mes?periodo={p}" for p in ps] + [f"/resultados?periodo={p}" for p in ps]:
     r = c.get(u)
     ok = r.status_code == 200
     mal += not ok

@@ -142,7 +142,17 @@ def _m5(con):
             con.execute("UPDATE OR IGNORE vinculo SET clave=? WHERE rut=? AND clave=?", (nueva, r["rut"], r["descripcion"]))
 
 
-MIGRACIONES = [_m1, _m2, _m3, _m4, _m5]
+def _m6(con):
+    """Stock contado (FUDO). Los insumos de sándwiches ya venían con factura (Comercial Los Lagos) desde julio 2026:
+    el estimado «sin factura» los contaba dos veces."""
+    con.executescript("""
+    CREATE TABLE IF NOT EXISTS stock_conteo(fecha TEXT NOT NULL, producto TEXT NOT NULL, cantidad REAL NOT NULL,
+      minimo REAL, corte TEXT NOT NULL, PRIMARY KEY(fecha, producto));
+    """)
+    con.execute("UPDATE costo_fijo SET hasta='2026-06' WHERE estimado=1 AND nombre LIKE 'S_ndwiches%' AND COALESCE(hasta,'9999') > '2026-06'")
+
+
+MIGRACIONES = [_m1, _m2, _m3, _m4, _m5, _m6]
 
 
 def migrar(con):

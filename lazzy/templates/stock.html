@@ -1,0 +1,24 @@
+{% extends "base.html" %}{% block title %}Stock{% endblock %}{% block main %}
+<div class="cab"><h1>Stock</h1></div>
+<p class="sub">Lo que debería haber hoy de cada producto que compran hecho: el último stock que subieron desde FUDO, más lo que llegó en facturas, menos lo vendido. {{tip('stock')}}</p>
+{% if not filas %}<p class="aviso">Todavía no hay stock cargado. En FUDO exporta el stock a Excel y súbelo en <a href="/cargar">Subir archivos</a> o mándalo al bot. Desde ahí el panel lleva la cuenta solo.</p>
+{% else %}
+<div class="tarjetas"><div class="tarjeta"><div class="t">Stock a costo</div><div class="n">{{valor|clp}}</div><div class="d">sin IVA, productos con costo cargado</div></div>
+<div class="tarjeta"><div class="t">Merma de {{mes|mesl}} {{tip('merma')}}</div><div class="n">{{merma|clp}}</div><div class="d">se resta de la utilidad del mes</div></div>
+<div class="tarjeta"><div class="t">Último stock subido</div><div class="n">{{ultimo[8:10]}}-{{ultimo[5:7]}}</div><div class="d">hace {{dias}} día{{'s' if dias != 1}}{% if dias > 10 %}. Conviene subirlo de nuevo{% endif %}</div></div></div>
+{% if sin_vinculo %}<p class="aviso">Estos productos no tienen una factura vinculada, así que sus pedidos no se suman solos: {{sin_vinculo[:12]|join(', ')}}{{'…' if sin_vinculo|length > 12}}. Se vinculan una vez en la ficha de su proveedor, en <a href="/compras">Facturas y proveedores</a>. Mientras tanto, al subir el stock aparecerán como «sobran».</p>{% endif %}
+<section class="bloque"><h2>Qué hay hoy</h2><div class="tabla"><table><tr><th class="l">Producto</th><th>Último conteo</th><th>Llegó</th><th>Se vendió</th><th>Debería haber</th><th>Mínimo</th><th>Costo c/u</th><th>Valor</th></tr>
+{% for f in filas %}<tr class="{{'falta' if f.bajo}}"><td class="l"><a href="/receta?p={{f.producto|urlencode}}">{{f.producto}}</a></td><td>{{f.conteo|round|int}}</td><td>{{('+' ~ (f.entradas|round|int)) if f.entradas else '—'}}</td><td>{{('-' ~ (f.ventas|round|int)) if f.ventas else '—'}}</td>
+<td><b>{{f.esperado|round|int}}</b>{% if f.bajo %} <span class="delta baja">bajo</span>{% endif %}</td><td>{{f.minimo|round|int if f.minimo is not none else '—'}}</td><td>{{f.costo|clp if f.costo is not none else 'sin costo'}}</td><td>{{f.valor|clp}}</td></tr>{% endfor %}</table></div>
+<p class="nota">Los combos también descuentan (un Cappu + Brownie resta un Brownie). Un combo genérico como «Cappu + Sandwich» no se puede descontar de un sándwich en particular.</p></section>
+<section class="bloque"><h2>Diferencias al contar</h2>
+{% if ajustes %}<p class="sub">Cada vez que subieron el stock, lo que el panel esperaba contra lo que había. Si falta, es merma; si sobra, llegó algo sin factura vinculada o se contó de más.</p>
+<div class="tabla"><table><tr><th>Fecha</th><th class="l">Producto</th><th>Había</th><th>Llegó</th><th>Se vendió</th><th>Esperado</th><th>Contado</th><th>Diferencia</th><th>Valor</th></tr>
+{% for a in ajustes %}<tr><td>{{a.fecha[8:10]}}-{{a.fecha[5:7]}}</td><td class="l">{{a.producto}}</td><td>{{a.antes|round|int}}</td><td>{{a.entradas|round|int}}</td><td>{{a.ventas|round|int}}</td><td>{{a.esperado|round|int}}</td><td>{{a.contado|round|int}}</td>
+<td><span class="delta {{'baja' if a.dif < 0 else 'sube'}}">{{'+' if a.dif > 0}}{{a.dif|round|int}}</span></td><td>{{a.valor|clp if a.valor is not none else '—'}}</td></tr>{% endfor %}</table></div>
+{% else %}<p class="sub">Aparecen desde el segundo stock que suban: ahí se compara lo esperado con lo contado.</p>{% endif %}</section>
+{% endif %}
+<section class="bloque"><h2>Cómo mantenerlo</h2><ul class="det"><li>Cuando llega un pedido: manden la factura al bot. Si sus productos están vinculados, el stock sube solo.</li>
+<li>Las ventas se descuentan con el reporte de Productos de FUDO de cada lunes.</li>
+<li>Cuando ajusten el stock en FUDO (merma, conteo de vitrina) y al cierre de cada mes: exporten el stock y súbanlo. El panel compara, registra la merma y sigue desde lo contado.</li></ul></section>
+{% endblock %}

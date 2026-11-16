@@ -55,7 +55,7 @@
 <div class="d">estimado, {% if p.iva.ppm %}más {{p.iva.ppm|clp}} de PPM{% else %}sin PPM configurado{% endif %} {{ tip('ppm') }}<br><a href="/impuestos">Ver todos los meses</a></div></div>{% endif %}
 </div></section>
 
-{% if pend %}<section class="bloque"><h2>Por hacer</h2><p class="sub">Lo que falta para que estos números sean confiables, y dónde conviene actuar.</p>
+{% if pend and not lista %}<section class="bloque"><h2>Por hacer</h2><p class="sub">Lo que falta para que estos números sean confiables, y dónde conviene actuar.</p>
 <ul class="pend">{% for x in pend %}<li><p>{{x.texto}}</p><a class="btn sec" href="{{x.url}}">{{x.accion}}</a></li>{% endfor %}</ul></section>{% endif %}
 
 <section class="bloque dos">

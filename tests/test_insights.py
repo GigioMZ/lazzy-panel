@@ -21,6 +21,7 @@ def base():
 
 def test_veredicto_y_desglose():
     con = base()
+    con.execute("INSERT INTO producto_costo VALUES ('Latte', 3000, 'manual', '2026-01-01')")   # costo de lo vendido: 60.000
     cfg = load_cfg(con)
     p = pnl_mes(con, "2026-10", cfg)
     v = I.veredicto(p, parcial=False)

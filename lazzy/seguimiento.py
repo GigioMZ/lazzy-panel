@@ -193,7 +193,8 @@ def veredicto(ev, m):
         if cp > 0:
             lectura = ("se siguen vendiendo igual o más pese a la subida" if cu >= -2 else
                        f"se venden {abs(cu):.0f}% menos, menos de lo que subió el precio ({cp:.0f}%): la subida conviene" if cu > -cp else
-                       f"se venden {abs(cu):.0f}% menos, más de lo que subió el precio ({cp:.0f}%)")
+                       f"se venden {abs(cu):.0f}% menos, más de lo que subió el precio ({cp:.0f}%)"
+                       + (", pero cada unidad deja tanto más que el total sube" if e >= 0 and not p["sin_costo"] else ""))
         else:
             lectura = (f"la baja de precio subió las ventas {cu:.0f}%" if cu > 0 else "la baja de precio no aumentó las ventas")
         if p["sin_costo"]:
@@ -253,6 +254,8 @@ def lista(con, cfg, tipo=None, producto=None):
         if g["tipo"] == "precio" and len(g["eventos"]) > 1:
             for e in g["eventos"]:
                 e["medida"] = medir(con, {"fecha": e["fecha"], "productos": [e["producto"]], "tipo": "precio"}, ultimo, cfg)
+        pm = (g.get("medida") or {}).get("prod") or {}
+        g["debil"] = g["tipo"] in ("precio", "nuevo") and not g["medida"]["midiendo"] and bool(pm.get("pocos_datos") or pm.get("sin_base") or not pm)
         prods = base.get("productos") or ([base["producto"]] if base.get("producto") else [])
         g["semanas"] = semanas_alrededor(con, g["fecha"], prods, ultimo) if g["tipo"] != "costo" else []
     return sorted(grupos, key=lambda g: g["fecha"], reverse=True)

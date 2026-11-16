@@ -3,6 +3,8 @@ from datetime import date, timedelta
 
 import openpyxl
 
+from . import finance as F
+from . import stock as ST
 from .db import connect, mes_rango
 from .importers.fudo_report import import_fudo_productos, import_fudo_report
 from .importers.rcv import import_rcv_compras, periodo_from_filename
@@ -16,16 +18,21 @@ def tipo(nombre, ruta):
         return "sii"
     if low.endswith(".xlsx"):
         hojas = openpyxl.load_workbook(ruta, read_only=True).sheetnames
+        if ST.es_stock(ruta):
+            return "stock"
         if "Detalle" in hojas:
             return "productos"
         if "Evolución de ventas" in hojas:
             return "ventas"
-        raise ValueError("no reconozco este Excel (espero Reporte de Ventas o de Productos de FUDO)")
+        raise ValueError("no reconozco este Excel (espero el reporte de Ventas, el de Productos o el Stock de FUDO)")
     raise ValueError("formato no soportado (.xlsx de FUDO, .csv del SII, PDF o ZIP de facturas)")
 
 
 def importar(con, nombre, ruta, t=None):
     t = t or tipo(nombre, ruta)
+    if t == "stock":
+        r = ST.guardar(con, ST.leer(ruta))
+        return t, f"{nombre}: stock de {r['productos']} productos guardado (con ventas hasta el {_fmt(r['corte'])})"
     if t == "sii":
         r = import_rcv_compras(con, ruta, periodo_from_filename(nombre))
         return t, f"{nombre}: {r['documentos']} documentos de compra, periodo {r['periodo']}"
@@ -41,6 +48,19 @@ def _fmt(f):
 def vista_previa(con, nombre, ruta):
     """Importa en una base temporal y compara con lo que ya hay. No toca la base real."""
     t = tipo(nombre, ruta)
+    if t == "stock":
+        filas = ST.leer(ruta)
+        difs = ST.vista_previa(con, F.load_cfg(con), filas)
+        lineas = [f"Stock de {len(filas)} productos. Se toma como contado con las ventas hasta el {_fmt(ST.corte_ahora())}."]
+        if not con.execute("SELECT 1 FROM stock_conteo LIMIT 1").fetchone():
+            lineas.append("Es el primer stock: desde aquí el panel suma las facturas y resta las ventas.")
+        elif difs:
+            lineas.append("Diferencias con lo que esperaba el panel: " + "; ".join(
+                f"{p}: esperaba {e:g}, hay {c:g} ({'faltan' if c < e else 'sobran'} {abs(c - e):g})" for p, e, c in difs[:8])
+                + ("…" if len(difs) > 8 else "") + ". Lo que falta se cuenta como merma; lo que sobra suele ser un pedido sin factura vinculada.")
+        else:
+            lineas.append("Calza con lo que esperaba el panel.")
+        return {"tipo": t, "nombre": nombre, "titulo": "Stock de FUDO", "lineas": lineas, "ok": True}
     mem = connect(":memory:")
     importar(mem, nombre, ruta, t)
     clp = lambda x: ("-" if x < 0 else "") + f"${abs(x):,.0f}".replace(",", ".")

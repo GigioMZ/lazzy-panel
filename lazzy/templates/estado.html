@@ -12,7 +12,8 @@
 {% if sig %}<a class="btn sec mini" href="/resultados?periodo={{sig}}" aria-label="Mes siguiente">→</a>{% endif %}</form></div>
 
 <p class="veredicto" style="max-width:none">{{per|mesl|capitalize}}: {% if c.resultado_operacional >= 0 %}ganaste {{c.resultado_operacional|clp}}{% else %}perdiste {{c.resultado_operacional|abs|clp}}{% endif %}, {{c.pct.resultado|pct(0)}} de lo vendido.</p>
-<p class="veredicto-det">Estado de resultados sin IVA. Las compras cuentan en el mes de su factura, aunque se usen después. {{tip('por_compras')}}</p>
+<p class="veredicto-det">Utilidad sin IVA: lo vendido menos lo que costó lo que se vendió (unidades × costo de cada producto), sueldos y gastos. Lo que compraron en el mes está más abajo, aparte. {{tip('utilidad_vs_compras')}}</p>
+{% if c.cobertura < 90 %}<p class="aviso">El {{100 - c.cobertura}}% del costo es estimado, porque hay productos sin costo cargado. <a href="/productos?grupo=sin">Completar costos</a></p>{% endif %}
 {% if parcial %}<p class="aviso">El mes todavía no termina: las ventas y facturas van hasta hoy.</p>
 {% elif not c.tiene_compras %}<p class="aviso">Falta el archivo de compras del SII de este mes. Sin él, los costos están incompletos y el resultado sale mejor de lo real. <a href="/cargar">Subir archivos</a></p>{% endif %}
 
@@ -27,13 +28,24 @@
 {% for f in e.filas %}
 {% if f.tipo == 'cat' %}{% set docs = det.get(f.cat, []) %}
 <details class="er-det"><summary class="er-row er-cat" role="row"><span class="er-l">{{f.cat|cat}} {% if docs %}<span class="er-cnt" title="{{docs|length}} documentos">{{docs|length}}</span>{% endif %}</span>{{ celdas(f) }}</summary>
-{% if docs %}<ul class="er-docs">{% for d in docs[:40] %}<li><span>{% if d.rut %}<a href="/proveedor?rut={{d.rut}}">{{d.nombre}}</a>{% else %}{{d.nombre}}{% endif %} <span class="nota">{{d.doc}}{% if d.fecha %}, {{d.fecha[8:10]}}-{{d.fecha[5:7]}}{% endif %}</span></span><b>{{d.monto|clp}}</b></li>{% endfor %}
+{% if docs %}<ul class="er-docs">{% for d in docs[:40] %}<li><span>{% if d.rut %}<a href="/proveedor?rut={{d.rut}}">{{d.nombre}}</a>{% elif f.grupo == 'costo_venta' %}<a href="/receta?p={{d.nombre|urlencode}}">{{d.nombre}}</a>{% else %}{{d.nombre}}{% endif %} <span class="nota">{{d.doc}}{% if d.fecha %}, {{d.fecha[8:10]}}-{{d.fecha[5:7]}}{% endif %}</span></span><b>{{d.monto|clp}}</b></li>{% endfor %}
 {% if docs|length > 40 %}<li class="nota">y {{docs|length - 40}} más</li>{% endif %}</ul>{% else %}<p class="nota er-docs">Este mes no hay documentos en esta categoría.</p>{% endif %}</details>
 {% else %}<div class="er-row er-{{f.tipo}}" role="row"><span class="er-l">{{f.nombre}} {% if f.clave %}{{tip(f.clave)}}{% endif %}{% if f.tipo == 'grupo' and f.grupo == 'sin_clasificar' %} <a class="nota" href="/compras">clasificar</a>{% endif %}</span>{{ celdas(f) }}</div>{% endif %}
 {% endfor %}
 </div>
 {% if c.inversion %}<p class="nota">Además compraste equipos por {{c.inversion|clp}}. No se resta del resultado porque dura años. {{tip('equipos')}}</p>{% endif %}
 </section>
+
+{% if puente %}<section class="bloque" id="compras"><h2>Lo que compraron y cómo calza {{tip('puente')}}</h2>
+<p class="sub">Son dos cuentas distintas. La utilidad mira lo que se vendió; las compras, lo que entró por facturas. La diferencia es lo que quedó en stock, la merma, o costos mal cargados. En un mes suelto puede ser grande (compran café para varios meses); acumulada debería acercarse a cero.</p>
+<div class="tabla"><table><tr><th class="l">Mes</th><th>Compras de insumos</th><th>Costo de lo vendido</th><th>Merma medida</th><th>Cambio de stock contado</th><th>Diferencia</th><th>Utilidad</th><th>Si se contara por compras</th></tr>
+{% for f in puente.filas %}<tr><td class="l">{{f.periodo|mes}}</td><td>{{f.compras|clp}}</td><td>{{f.vendido|clp}}</td><td>{{f.merma|clp if f.merma else '—'}}</td><td>{{f.dstock|clp if f.dstock is not none else '—'}}</td><td>{{f.dif|clp}}</td><td><b>{{f.utilidad|clp}}</b></td><td class="nota">{{f.por_compras|clp}}</td></tr>{% endfor %}
+{% if puente.filas|length > 1 %}{% set t = puente.total %}<tr class="fuerte"><td class="l">Acumulado</td><td>{{t.compras|clp}}</td><td>{{t.vendido|clp}}</td><td>{{t.merma|clp if t.merma else '—'}}</td><td>{{t.dstock|clp if t.dstock is not none else '—'}}</td><td>{{t.dif|clp}} <span class="nota">{{t.dif_pct|pct(1)}} de la venta</span></td><td>{{t.utilidad|clp}}</td><td class="nota">{{t.por_compras|clp}}</td></tr>{% endif %}</table></div>
+{% if puente.alerta %}<p class="aviso">En {{puente.filas|length}} meses compraron {{puente.total.dif|clp}} más de lo que explican las ventas ({{puente.total.dif_pct|pct(1)}} de la venta). Puede ser stock de insumos acumulado, merma no anotada, porciones más grandes que la receta o costos de productos desactualizados.</p>{% endif %}
+<details class="panel anotar"><summary><b>Compras de {{per|mesl}} por categoría</b> <span class="nota">{{compras.total|clp}} sin IVA</span></summary>
+{% for k, m in compras.lineas|dictsort(by='value', reverse=true) %}<details class="er-det"><summary class="er-row er-cat" style="grid-template-columns:1fr 140px"><span class="er-l">{{k|cat}}</span><span class="er-n">{{m|clp}}</span></summary>
+<ul class="er-docs">{% for d in det.get(k, [])[:40] %}<li><span>{% if d.rut %}<a href="/proveedor?rut={{d.rut}}">{{d.nombre}}</a>{% else %}{{d.nombre}}{% endif %} <span class="nota">{{d.doc}}{% if d.fecha %}, {{d.fecha[8:10]}}-{{d.fecha[5:7]}}{% endif %}</span></span><b>{{d.monto|clp}}</b></li>{% endfor %}</ul></details>{% endfor %}</details>
+</section>{% endif %}
 
 <section class="dos bloque">
 <div class="panel"><h2>Indicadores del mes</h2><dl class="ind">

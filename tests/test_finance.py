@@ -41,13 +41,14 @@ def test_pnl_and_iva(tmp_path):
     assert con.execute("SELECT COUNT(*) FROM compra").fetchone()[0] == 4
     p = pnl_mes(con, "2026-10", CFG)
     assert p["ventas"]["neto"] == 2000 and p["ventas"]["iva_debito"] == 380
-    assert p["costo_venta"] == 300            # 400 - nota de crédito 100
+    assert p["compras"]["total"] == 300            # 400 - nota de crédito 100
     assert p["personal"] == 300 and p["gasto_operacional"] == 50   # costo fijo vencido no cuenta
     assert p["sin_clasificar"] == 200
-    assert p["resultado_operacional"] == 2000 - 300 - 300 - 50 - 200
-    assert p["pct"]["prime_cost"] == 30.0
-    # equilibrio: fijos 300 / margen de contribución (1 - 350/2000)
-    assert p["equilibrio"]["venta_neta_mes"] == round(300 / (1 - 350 / 2000))
+    assert p["resultado_por_compras"] == 2000 - 300 - 300 - 50 - 200
+    # la utilidad usa el costo de lo vendido (aquí no hay productos vendidos), no las compras
+    assert p["costo_venta"] == 0 and p["resultado_operacional"] == 2000 - 300 - 50 - 200
+    assert p["pct"]["prime_cost"] == 15.0
+    assert p["equilibrio"]["venta_neta_mes"] == round(300 / (1 - 50 / 2000))
     i = iva_mes(con, "2026-10", CFG)
     assert i["credito"] == 76 - 19 + 10 + 38 and i["iva_a_pagar"] == 380 - 105 and i["ppm"] == 20
 
@@ -58,7 +59,7 @@ def test_override_categoria(tmp_path):
     con.execute("UPDATE compra SET categoria='cafe' WHERE folio=13")
     import_rcv_compras(con, f)  # reimportar no pisa la clasificación manual
     p = pnl_mes(con, "2026-10", CFG)
-    assert p["sin_clasificar"] == 0 and p["costo_venta"] == 500
+    assert p["sin_clasificar"] == 0 and p["compras"]["total"] == 500
 
 
 def test_margen_productos():
@@ -105,8 +106,8 @@ def test_factura_cuenta_en_su_mes_y_el_iva_en_su_periodo(tmp_path):
     f.write_text(HDR + "1;33;Del Giro;1-9;CAFE SA;10;28/09/2026;x;;0;400;76;;;476;;\n", encoding="utf-8")
     import_rcv_compras(con, f)                        # archivo del periodo 2026-10
     con.execute("INSERT INTO venta_hora VALUES ('2026-09-30',9,1190,1)")
-    assert pnl_mes(con, "2026-09", CFG)["costo_venta"] == 400      # resultados: mes de la factura
-    assert pnl_mes(con, "2026-10", CFG)["costo_venta"] == 0
+    assert pnl_mes(con, "2026-09", CFG)["compras"]["total"] == 400      # resultados: mes de la factura
+    assert pnl_mes(con, "2026-10", CFG)["compras"]["total"] == 0
     assert iva_mes(con, "2026-10", CFG)["credito"] == 76          # IVA: periodo del SII
     assert iva_mes(con, "2026-09", CFG)["credito"] == 0
 

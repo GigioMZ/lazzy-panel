@@ -5,7 +5,7 @@ from collections import defaultdict
 from . import finance as F
 from .db import mes_rango
 
-GRUPOS = [("costo_venta", "Costo de venta", "insumos"), ("personal", "Sueldos", "sueldos"),
+GRUPOS = [("costo_venta", "Costo de lo vendido", "costo_vendido"), ("personal", "Sueldos", "sueldos"),
           ("gasto_operacional", "Gastos del local", "gastos_local"), ("sin_clasificar", "Facturas sin categoría", "sin_categoria")]
 COLOR = {"costo_venta": "#2f6f9f", "personal": "#d9772b", "gasto_operacional": "#d6a300", "sin_clasificar": "#c94f63",
          "resultado": "#1f9e78"}
@@ -90,6 +90,41 @@ def detalle(con, cfg, periodo):
         out["comision_tarjetas"].append({"fecha": None, "nombre": "Comisión estimada (aún no llega la factura)",
                                          "doc": "Estimado", "monto": com["monto"]})
     return {k: sorted(v, key=lambda d: -abs(d["monto"])) for k, v in out.items()}
+
+
+def detalle_costo(p):
+    """Productos que forman el costo de lo vendido de cada categoría de la carta: unidades × costo."""
+    out = defaultdict(list)
+    for x in p["costo_productos"]:
+        out[x["categoria"]].append({"fecha": None, "nombre": x["producto"], "monto": x["costo"],
+                                    "doc": f"{x['cantidad']:g} vendidos" + (", costo estimado" if x["estimado"] else "")})
+    return {k: sorted(v, key=lambda d: -d["monto"]) for k, v in out.items()}
+
+
+def puente(con, cfg, periodo, ps, n=3):
+    """Cómo calzan las dos formas de contar: lo comprado = costo de lo vendido + merma + aumento de stock + diferencia.
+    La diferencia de un mes suelto es sobre todo stock de insumos (café, leche); acumulada, tiende a cero."""
+    from . import stock as ST
+    meses = [x for x in ps if x <= periodo][-n:]
+    filas = []
+    for x in meses:
+        p = F.pnl_mes(con, x, cfg)
+        if not p["tiene_compras"]:
+            continue
+        fin, ini = F.fin_de_mes(x), F.fin_de_mes(menos(x, 1))
+        v1, v0 = ST.valor(con, cfg, fin), ST.valor(con, cfg, ini)
+        dstock = v1 - v0 if v1 is not None and v0 is not None else None
+        teorico = p["costo_venta"] - p["merma"]
+        filas.append({"periodo": x, "venta": p["ventas"]["neto"], "compras": p["compras"]["total"], "vendido": teorico,
+                      "merma": p["merma"], "dstock": dstock,
+                      "dif": p["compras"]["total"] - teorico - p["merma"] - (dstock or 0),
+                      "utilidad": p["resultado_operacional"], "por_compras": p["resultado_por_compras"]})
+    if not filas:
+        return None
+    tot = {k: sum(f[k] or 0 for f in filas) for k in ("venta", "compras", "vendido", "merma", "dif", "utilidad", "por_compras")}
+    tot["dstock"] = sum(f["dstock"] for f in filas if f["dstock"] is not None) if any(f["dstock"] is not None for f in filas) else None
+    tot["dif_pct"] = round(100 * tot["dif"] / tot["venta"], 1) if tot["venta"] else None
+    return {"filas": filas, "total": tot, "alerta": len(filas) >= 3 and tot["dif_pct"] is not None and tot["dif_pct"] > 5}
 
 
 def composicion(p):

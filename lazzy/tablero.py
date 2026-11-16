@@ -90,25 +90,8 @@ def resultado(con, cfg, d0, d1, cache=None, hoy=None):
     v = con.execute("SELECT COALESCE(SUM(bruto),0) b, COALESCE(SUM(tickets),0) t, COUNT(DISTINCT fecha) d "
                     "FROM venta_hora WHERE fecha BETWEEN ? AND ?", (a, b)).fetchone()
     neto = round(v["b"] / (1 + iva))
-    # costo de lo vendido con recetas/costos; lo que no tiene costo se estima con el % de su categoría
-    costos = cfg["costo_producto"]
-    filas = con.execute("SELECT categoria, producto, SUM(cantidad) q, SUM(bruto) b FROM venta_producto "
-                        "WHERE fecha BETWEEN ? AND ? GROUP BY categoria, producto", (a, b)).fetchall()
-    cat_v, cat_c = {}, {}
-    for r in filas:
-        if r["producto"] in costos and costos[r["producto"]]["costo"] is not None:
-            cat_v[r["categoria"]] = cat_v.get(r["categoria"], 0) + r["b"] / (1 + iva)
-            cat_c[r["categoria"]] = cat_c.get(r["categoria"], 0) + r["q"] * costos[r["producto"]]["costo"]
-    tasa_total = sum(cat_c.values()) / sum(cat_v.values()) if cat_v else 0.35
-    cv, cv_est, vp = 0.0, 0.0, 0.0
-    for r in filas:
-        nb = r["b"] / (1 + iva)
-        vp += nb
-        if r["producto"] in costos and costos[r["producto"]]["costo"] is not None:
-            cv += r["q"] * costos[r["producto"]]["costo"]
-        else:
-            t = cat_c[r["categoria"]] / cat_v[r["categoria"]] if cat_v.get(r["categoria"]) else tasa_total
-            cv_est += nb * t
+    c = F.costo_vendido(con, a, b, cfg)
+    cv, cv_est, vp = c["total"] - c["estimado"], c["estimado"], c["venta_productos"]
     if vp and neto and abs(vp - neto) / neto > 0.02:      # productos no cargados para todo el rango
         cv, cv_est = cv * neto / vp, cv_est * neto / vp
     costo_venta = round(cv + cv_est)

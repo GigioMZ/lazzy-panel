@@ -98,12 +98,19 @@ def checklist(con, cfg, periodo, p):
     serv = con.execute("SELECT 1 FROM gasto_manual WHERE categoria='servicios' AND fecha >= ? AND fecha < ?", rng).fetchone() or \
         any(c.get("categoria") == "servicios" and not c.get("estimado") for c in cfg.get("costo_fijo", []))
     mp = F.margen_productos(con, periodo, periodo, F.load_cfg(con, fin))
+    sin_cat = con.execute("SELECT COUNT(DISTINCT c.rut) FROM compra c LEFT JOIN proveedor p ON p.rut=c.rut "
+                          "WHERE COALESCE(c.categoria, p.categoria) IS NULL").fetchone()[0]
+    d_fin = date.fromisoformat(fin)
+    st = con.execute("SELECT MAX(fecha) FROM stock_conteo WHERE fecha BETWEEN ? AND ?",
+                     ((d_fin - timedelta(days=3)).isoformat(), (d_fin + timedelta(days=7)).isoformat())).fetchone()[0]
     items = [
         ("Ventas de FUDO hasta el último día", bool(uv and uv >= fin), f"Cargadas hasta el {fmt(uv)}.", "/cargar", "Subir"),
         ("Productos de FUDO hasta el último día", bool(up and up >= fin), f"Cargados hasta el {fmt(up)}.", "/cargar", "Subir"),
         ("Compras del SII del mes", sii > 0, f"{sii} documentos." if sii else "Se descarga del SII los primeros días del mes siguiente.", "/cargar", "Subir"),
-        ("Todas las facturas con categoría", not sin,
-         "Listo." if not sin else (lambda n: f"{n} proveedor{'es' if n != 1 else ''} sin categoría.")(len({x[1] for x in sin})), "/compras", "Clasificar"),
+        ("Todos los proveedores con categoría", not sin and not sin_cat,
+         "Listo." if not sin and not sin_cat else f"{max(sin_cat, len({x[1] for x in sin}))} proveedor{'es' if max(sin_cat, 1) != 1 else ''} sin categoría.", "/compras", "Clasificar"),
+        ("Stock de FUDO subido al cierre", bool(st), f"Subido el {fmt(st)}." if st else
+         "Exporta el stock de FUDO el último día del mes (o los primeros del siguiente) y súbelo: así se mide la merma.", "/cargar", "Subir"),
         ("Cuentas de luz y agua reales", bool(serv), "Cargadas." if serv else "Se está usando el monto estimado. Mándalas al bot.", "/bot", "Ver bot"),
         ("Factura de Transbank del mes", not p["comision"]["estimada"],
          "Llegó." if not p["comision"]["estimada"] else "Todavía es estimada; llega con el SII del mes siguiente.", "/cargar", "Subir"),

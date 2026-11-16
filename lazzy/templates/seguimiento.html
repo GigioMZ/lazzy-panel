@@ -11,7 +11,7 @@
 <label class="campo"><span>Producto que afecta (opcional)</span><select name="producto"><option value="">Todo el local</option>{% for p in prods %}<option>{{p}}</option>{% endfor %}</select></label></div>
 <label class="campo"><span>Nota (opcional)</span><input name="nota" maxlength="500" placeholder="Por qué lo hicieron o qué esperan que pase"></label>
 <p><button class="btn">Guardar decisión</button> <span class="nota">El efecto se mide solo, con las ventas que vayas subiendo.</span></p></form></details>
-{% for g in grupos %}{% set e0 = g.eventos[0] %}{% set m = g.medida %}{% set p = m.prod if m else none %}{% set ids = g.eventos|map(attribute='id')|join(',') %}
+{% for g in grupos %}{% if n_debiles and loop.index0 == n_fuertes %}<details class="debiles bloque"><summary><b>Con pocos datos ({{n_debiles}})</b> <span class="nota">cambios en productos que se venden muy poco o que no se vendían antes: el efecto no se puede medir bien</span></summary>{% endif %}{% set e0 = g.eventos[0] %}{% set m = g.medida %}{% set p = m.prod if m else none %}{% set ids = g.eventos|map(attribute='id')|join(',') %}
 <article class="seg bloque {{g.veredicto[0]}}">
 <header><span class="seg-tipo">{{tipos['precio'] if g.tipo == 'precio' else tipos[g.tipo]}}</span> <span class="nota">{{g.fecha[8:10]}}-{{g.fecha[5:7]}}-{{g.fecha[:4]}}{% if g.fin != g.fecha %} al {{g.fin[8:10]}}-{{g.fin[5:7]}}{% endif %}{% if e0.origen == 'manual' %} · anotada a mano{% endif %}</span></header>
 <h2>{% if g.tipo == 'precio' and g.eventos|length > 1 %}Cambiaron el precio de {{g.eventos|length}} productos{% else %}{{e0.titulo}}{% endif %}</h2>
@@ -31,7 +31,7 @@
 <footer class="fila"><form method="post" class="fila nota-f"><input type="hidden" name="csrf" value="{{csrf}}"><input type="hidden" name="accion" value="nota"><input type="hidden" name="ids" value="{{ids}}"><input type="hidden" name="volver" value="{{request.url.path}}?{{request.url.query}}">
 <input name="nota" value="{{e0.nota or ''}}" placeholder="Agregar una nota" maxlength="500" aria-label="Nota"><button class="btn sec mini">Guardar nota</button></form>
 <form method="post"><input type="hidden" name="csrf" value="{{csrf}}"><input type="hidden" name="accion" value="ocultar"><input type="hidden" name="ids" value="{{ids}}"><input type="hidden" name="volver" value="{{request.url.path}}?{{request.url.query}}"><button class="btn sec mini" onclick="return confirm('¿Sacar esto del seguimiento?')">No es relevante</button></form></footer>
-</article>{% else %}<p class="aviso">Todavía no hay nada que seguir{{' de este tipo' if tipo}}. Aparece solo al subir el reporte de productos de FUDO o al mandar facturas al bot, o anota una decisión arriba.</p>{% endfor %}
+</article>{% if n_debiles and loop.last %}</details>{% endif %}{% else %}<p class="aviso">Todavía no hay nada que seguir{{' de este tipo' if tipo}}. Aparece solo al subir el reporte de productos de FUDO o al mandar facturas al bot, o anota una decisión arriba.</p>{% endfor %}
 {% endblock %}
 {% block js %}<script src="/static/chart.umd.js"></script><script>
 LZ.base();

@@ -40,7 +40,7 @@ def test_paginas_y_edicion(tmp_path):
                 "/impuestos", "/cargar", "/receta?p=Latte", "/ayuda", "/bot", "/mes?periodo=1999-01"):
         assert c.get(url).status_code == 200, url
     inicio = c.get("/mes?periodo=2026-10").text
-    assert "proveedores sin categoría" in inicio and "Facturas sin categoría" in inicio
+    assert "sin categoría." in inicio and "Stock de FUDO subido al cierre" in inicio and "Facturas sin categoría" in inicio
     assert 'class="tip"' in inicio and "te quedaron" in inicio
     # sin token CSRF no se puede escribir
     assert c.post("/insumos", data={"nombre": "Leche", "unidad": "ml", "cantidad": "1000", "precio": "1000"}).status_code == 403

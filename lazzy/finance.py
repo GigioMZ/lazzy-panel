@@ -124,6 +124,7 @@ def load_cfg(con, fecha=None):
     precios = _precios_insumo(con, fecha)
     for r in con.execute("SELECT DISTINCT producto FROM receta"):
         costos[r["producto"]] = {"costo": costo_receta(con, r["producto"], precios=precios), "fuente": "receta"}
+    _costos_combos(con, costos)
     tasa = lambda k: float(par[k]) if par.get(k) not in (None, "") else None
     return {
         "empresa": {"iva": float(par.get("iva", 0.19)), "ppm_tasa": float(par.get("ppm_tasa", 0)),
@@ -132,6 +133,82 @@ def load_cfg(con, fecha=None):
         "proveedores": {r["rut"]: r["categoria"] for r in con.execute("SELECT rut, categoria FROM proveedor")},
         "categorias": CATEGORIAS, "costo_producto": costos,
     }
+
+
+def _norm(t):
+    import re
+    import unicodedata
+    t = unicodedata.normalize("NFKD", (t or "").lower())
+    return re.sub(r"[^a-z0-9 ]", "", "".join(c for c in t if not unicodedata.combining(c))).strip()
+
+
+def componentes(nombre, productos):
+    """Partes de un combo («Cappu + Brownie» → [Cappuccino, Brownies]). Cada parte es el producto cuyo nombre
+    empieza igual; None si no calza con uno solo (por ejemplo «Sandwich», que es una categoría)."""
+    simples = {_norm(x): x for x in productos if "+" not in x and len(_norm(x)) >= 3}
+    out = []
+    for parte in nombre.split("+"):
+        t = _norm(parte)
+        cands = [k for k in simples if len(t) >= 3 and (k.startswith(t) or t.startswith(k))]
+        out.append(simples[min(cands, key=len)] if cands else None)
+    return out
+
+
+def _costos_combos(con, costos):
+    """Costo de los combos: la suma de sus partes. Una parte genérica («Sandwich») usa el promedio de su categoría."""
+    filas = con.execute("SELECT producto, MAX(categoria) cat FROM venta_producto GROUP BY producto").fetchall()
+    nombres = [r["producto"] for r in filas] + [r[0] for r in con.execute("SELECT producto FROM producto_manual")]
+    por_cat = {}
+    for r in filas:
+        c = costos.get(r["producto"])
+        if c and c.get("costo") is not None and "+" not in r["producto"]:
+            por_cat.setdefault(_norm(r["cat"]), []).append(c["costo"])
+    for n in nombres:
+        if "+" not in n or (costos.get(n) or {}).get("costo") is not None:
+            continue
+        total = 0
+        for parte, prod in zip(n.split("+"), componentes(n, nombres)):
+            c = (costos.get(prod) or {}).get("costo") if prod else None
+            if c is None:
+                t = _norm(parte)
+                cat = next((v for k, v in por_cat.items() if len(t) >= 4 and k.startswith(t[:6])), None)
+                c = sum(cat) / len(cat) if cat else None
+            if c is None:
+                total = None
+                break
+            total += c
+        if total is not None:
+            costos[n] = {"costo": round(total), "fuente": "combo"}
+
+
+def costo_vendido(con, a, b, cfg):
+    """Costo de lo vendido entre dos fechas: unidades × costo de cada producto. Lo que no tiene costo se estima
+    con el % de su categoría (o el general) y se informa aparte."""
+    iva, costos = cfg["empresa"]["iva"], cfg["costo_producto"]
+    filas = con.execute("SELECT categoria, producto, SUM(cantidad) q, SUM(bruto) b FROM venta_producto "
+                        "WHERE fecha BETWEEN ? AND ? GROUP BY categoria, producto", (a, b)).fetchall()
+    tiene = lambda r: r["producto"] in costos and costos[r["producto"]]["costo"] is not None
+    cat_v, cat_c = {}, {}
+    for r in filas:
+        if tiene(r):
+            cat_v[r["categoria"]] = cat_v.get(r["categoria"], 0) + r["b"] / (1 + iva)
+            cat_c[r["categoria"]] = cat_c.get(r["categoria"], 0) + r["q"] * costos[r["producto"]]["costo"]
+    tasa_total = sum(cat_c.values()) / sum(cat_v.values()) if cat_v else 0.35
+    cv = est = vp = 0.0
+    por_cat, prods = {}, []
+    for r in filas:
+        nb = r["b"] / (1 + iva)
+        vp += nb
+        if tiene(r):
+            c, e = r["q"] * costos[r["producto"]]["costo"], False
+            cv += c
+        else:
+            c, e = nb * (cat_c[r["categoria"]] / cat_v[r["categoria"]] if cat_v.get(r["categoria"]) else tasa_total), True
+            est += c
+        por_cat[r["categoria"]] = por_cat.get(r["categoria"], 0) + c
+        prods.append({"producto": r["producto"], "categoria": r["categoria"], "cantidad": r["q"], "costo": round(c), "estimado": e})
+    return {"total": cv + est, "estimado": est, "venta_productos": vp, "por_categoria": por_cat, "productos": prods,
+            "cobertura": round(100 * (1 - est / (cv + est))) if cv + est else 0}
 
 
 def _sign(tipo_doc):
@@ -202,6 +279,18 @@ def pnl_mes(con, periodo, cfg):
     for cat, monto in cats.items():
         lineas[grupos.get(cat, "sin_clasificar")][cat] = monto
     tot = {g: sum(d.values()) for g, d in lineas.items()}
+    # Lo comprado en el mes (facturas) queda como dato aparte; la utilidad usa el costo de lo que se vendió.
+    compras = {"lineas": dict(lineas.get("costo_venta", {})), "total": tot.get("costo_venta", 0)}
+    a, b = mes_rango(periodo)
+    costos_mes = cfg if cfg.get("_fecha") == fin_de_mes(periodo) else dict(cfg, costo_producto=load_cfg(con, fin_de_mes(periodo))["costo_producto"])
+    cvd = costo_vendido(con, a, fin_de_mes(periodo), costos_mes)
+    escala = v["neto"] / cvd["venta_productos"] if cvd["venta_productos"] and abs(cvd["venta_productos"] - v["neto"]) > 0.02 * v["neto"] else 1
+    from .stock import merma_mes
+    merma = merma_mes(con, periodo, costos_mes)
+    lineas["costo_venta"] = {k: round(c * escala) for k, c in sorted(cvd["por_categoria"].items(), key=lambda x: -x[1]) if round(c * escala)}
+    if merma:
+        lineas["costo_venta"]["Merma y ajustes de stock"] = merma
+    tot["costo_venta"] = sum(lineas["costo_venta"].values())
     cv, pers = tot.get("costo_venta", 0), tot.get("personal", 0)
     gop, sc = tot.get("gasto_operacional", 0), tot.get("sin_clasificar", 0)
     n = v["neto"]
@@ -214,6 +303,8 @@ def pnl_mes(con, periodo, cfg):
         "periodo": periodo, "ventas": v, "lineas": {g: dict(d) for g, d in lineas.items()},
         "costo_venta": cv, "margen_bruto": margen_bruto, "personal": pers, "gasto_operacional": gop,
         "sin_clasificar": sc, "sin_clasificar_detalle": sin, "inversion": tot.get("inversion", 0),
+        "compras": compras, "merma": merma, "costo_estimado": round(cvd["estimado"] * escala), "cobertura": cvd["cobertura"],
+        "costo_productos": cvd["productos"], "resultado_por_compras": n - compras["total"] - pers - gop - sc,
         "tiene_compras": bool(con.execute("SELECT 1 FROM compra WHERE periodo=? LIMIT 1", (periodo,)).fetchone()), "resultado_operacional": resultado,
         "pct": {"costo_venta": pct(cv), "margen_bruto": pct(margen_bruto), "personal": pct(pers),
                 "prime_cost": pct(cv + pers), "gasto_operacional": pct(gop), "resultado": pct(resultado)},

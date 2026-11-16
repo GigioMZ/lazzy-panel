@@ -69,6 +69,10 @@ GLOSARIO = {
     "cuentas_luz_agua": ("Cuentas de luz y agua", "Se reconocen solas por el nombre (Enel, Aguas Andinas, «luz», «agua») cuando llegan por el bot o como factura. Mientras no llega la cuenta del mes, el estado de resultados usa el monto estimado de Gastos fijos."),
     "turnos": ("Turnos", "Quién atiende cada día y en qué horario. La venta de cada hora se asigna a quien está de turno; si una hora se comparte (16:30), se reparte en proporción. Sirve para ver qué turnos rinden más y dónde sobra o falta gente."),
     "calendario": ("Calendario de datos", "Muestra qué días y meses ya tienen sus datos en el panel. Con todo en verde, los números son completos; un día en rojo significa que falta subir el reporte de FUDO que lo incluye."),
+    "utilidad_vs_compras": ("Utilidad y compras", "La utilidad resta lo que costó lo que se vendió: unidades vendidas por el costo de cada producto (su receta o su última factura), más la merma medida con el stock. Las compras del mes son otra cuenta: sirven para la caja y el IVA, pero no dicen cuánto se ganó, porque lo comprado puede venderse en otro mes."),
+    "puente": ("Cómo calzan las dos cuentas", "Lo comprado = costo de lo vendido + merma + lo que aumentó el stock + diferencia. La diferencia sin explicar es stock de insumos que no se cuenta (café, leche), merma no anotada o costos mal cargados. Si acumulada pasa de 5% de la venta, vale la pena revisar."),
+    "stock": ("Stock", "Parte del stock que suben desde FUDO. El panel le suma lo que llega en facturas vinculadas a un producto y le resta lo vendido. Cuando suben el stock de nuevo, la diferencia con lo esperado es merma (si falta) o una entrada sin factura (si sobra), y la cuenta vuelve a partir de lo contado."),
+    "merma": ("Merma", "Productos que faltan al comparar el stock contado con el esperado: vencidos, regalados, rotos o no registrados. Se valoran al costo y se restan de la utilidad del mes en que se detectan."),
 }
 
 # Nombres legibles de las categorías, agrupadas como aparecen en los selectores.
