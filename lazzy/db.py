@@ -106,7 +106,14 @@ def _m3(con):
 
 
 # Cada cambio de estructura se agrega al final de esta lista; nunca se edita uno ya publicado.
-MIGRACIONES = [_m1, _m2, _m3]
+def _m4(con):
+    """Metas mensuales (periodo '*' = vale para todos los meses)."""
+    con.executescript("""
+    CREATE TABLE IF NOT EXISTS meta(periodo TEXT NOT NULL, clave TEXT NOT NULL, valor REAL NOT NULL, PRIMARY KEY(periodo, clave));
+    """)
+
+
+MIGRACIONES = [_m1, _m2, _m3, _m4]
 
 
 def migrar(con):

@@ -83,6 +83,14 @@ def detectar(con, avisar_desde=None):
     return nuevos
 
 
+def asegurar(con):
+    """La primera vez revisa todo el historial de ventas (sin avisar por el bot)."""
+    if not con.execute("SELECT 1 FROM parametro WHERE clave='seg_detectado'").fetchone():
+        detectar(con)
+        con.execute("INSERT OR REPLACE INTO parametro VALUES ('seg_detectado', ?)", (date.today().isoformat(),))
+        con.commit()
+
+
 def _dias_abiertos(con, a, b):
     return con.execute("SELECT COUNT(DISTINCT fecha) FROM venta_hora WHERE fecha BETWEEN ? AND ? AND bruto > 0",
                        (a.isoformat(), b.isoformat())).fetchone()[0]

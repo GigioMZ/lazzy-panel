@@ -8,6 +8,19 @@
 <p class="sub">Cada punto es un producto. Más a la derecha: se vende más. Más arriba: deja más plata por unidad. Pasa el mouse o toca un punto para ver cuál es.</p>
 <div class="grafico alto"><canvas id="cp" role="img" aria-label="Productos según unidades vendidas y plata que dejan por unidad"></canvas></div></section>{% endif %}
 
+<section class="bloque" id="ofertas"><h2>Ofertas {{tip('ofertas')}}</h2>
+{% if of.actuales %}<p class="sub">Los combos que venden hoy, últimas 4 semanas.</p><div class="tabla"><table><tr><th class="l">Combo</th><th>Precio</th><th>Por separado</th><th>Descuento</th><th>Por semana</th><th>Tendencia</th><th>Deja c/u</th><th>Margen</th><th>Deja al mes</th></tr>
+{% for o in of.actuales %}<tr><td class="l w">{{o.producto}}<br><span class="nota">{{o.partes|join(' + ')}}</span></td><td>{{o.precio|clp}}</td><td>{{o.separado|clp if o.separado}}</td><td>{{(o.descuento|string ~ '%') if o.descuento is not none else '—'}}</td>
+<td>{{o.uds_semana|string|replace('.',',')}}</td><td>{% if o.tendencia is not none %}<span class="delta {{'sube' if o.tendencia >= 0 else 'baja'}}">{{'+' if o.tendencia > 0}}{{o.tendencia}}%</span>{% endif %}</td>
+<td>{{o.deja|clp if o.deja is defined else '—'}}</td><td>{% if o.margen is defined %}{{o.margen}}% <span class="nota">({{o.margen_sep}}% por separado)</span>{% else %}<span class="nota">falta costo</span>{% endif %}</td><td>{{o.deja_mes|clp if o.deja_mes is defined else '—'}}</td></tr>{% endfor %}</table></div>
+{% for o in of.actuales if o.margen is defined and o.margen_sep - o.margen >= 10 %}<p class="nota">{{o.producto}} deja {{o.margen}}% contra {{o.margen_sep}}% si se compran por separado: el descuento de {{o.descuento}}% conviene solo si trae ventas que no habría sin el combo. Mira su efecto en <a href="/seguimiento?producto={{o.producto|urlencode}}">Seguimiento</a>.</p>{% endfor %}
+{% else %}<p class="sub">No hay combos en la carta (productos con «+» en el nombre en FUDO).</p>{% endif %}
+{% if of.sugeridas %}<h3 class="h3">Combos para probar</h3><div class="ofertas">{% for o in of.sugeridas %}<article class="oferta"><h4>{{o.nombre}}</h4>
+<p class="o-precio"><b>{{o.precio|clp}}</b> <s>{{o.separado|clp}}</s> <span class="nota">{{o.descuento}}% menos</span></p>
+<p>{{o.porque}}</p><dl><div><dt>Deja por combo</dt><dd>{{o.deja|clp}} ({{o.margen}}%)</dd></div><div><dt>Cuándo</dt><dd>{{o.cuando}}</dd></div></dl></article>{% endfor %}</div>
+<p class="nota">Para probar uno, créenlo en FUDO con «+» en el nombre (por ejemplo «{{of.sugeridas[0].nombre}}»). Al subir el reporte de productos, el panel lo detecta solo y mide su efecto en Seguimiento, incluyendo si le quita ventas a lo demás.</p>{% endif %}
+</section>
+
 <section class="bloque"><h2>Todos los productos</h2>
 <div class="filtros" role="group" aria-label="Filtrar productos">
 <button class="chip" data-g="" aria-pressed="true">Todos <b>{{r.productos|length}}</b></button>
@@ -15,7 +28,7 @@
 <button class="chip" data-g="sin" aria-pressed="false">Falta el costo <b>{{conteo.sin}}</b></button>
 <input id="busca" type="search" placeholder="Buscar producto" aria-label="Buscar producto"></div>
 <div class="tabla"><table id="tp"><tr><th>Producto</th><th>Vendidos</th>{{ th('Precio carta','precio_carta') }}{{ th('Te cuesta','costo_unidad') }}{{ th('Te deja','deja_unidad') }}{{ th('Margen','margen') }}{{ th('Ganancia total','aporte') }}{{ th('Grupo','grupo','l') }}</tr>
-{% for d in r.productos %}<tr data-g="{{d.clase or 'sin'}}" data-n="{{d.producto|lower}}" class="{{'falta' if d.costo is none}}"><td><a href="/receta?p={{d.producto|urlencode}}">{{d.producto}}</a></td><td>{{d.cantidad|num}}</td><td>{{d.precio_bruto|clp}}</td>
+{% for d in r.productos %}<tr data-g="{{d.clase or 'sin'}}" data-n="{{d.producto|lower}}" class="{{'falta' if d.costo is none}}"><td><a href="/receta?p={{d.producto|urlencode}}">{{d.producto}}</a>{% if d.producto in segs %} <a class="chip mini-chip" href="/seguimiento?producto={{d.producto|urlencode}}" title="Ver sus cambios de precio y efecto">seguimiento</a>{% endif %}</td><td>{{d.cantidad|num}}</td><td>{{d.precio_bruto|clp}}</td>
 <td>{% if d.fuente=="receta" %}{{d.costo|clp}} <a href="/receta?p={{d.producto|urlencode}}" title="El costo sale de la receta">receta</a>{% else %}
 <form class="fila junto" method="post" action="/productos/costo" style="justify-content:flex-end"><input type="hidden" name="csrf" value="{{csrf}}"><input type="hidden" name="producto" value="{{d.producto}}"><input type="hidden" name="volver" value="{{request.url.path}}?{{request.url.query}}">
 <input class="n chico" name="costo" value="{{d.costo or ''}}" placeholder="sin IVA" inputmode="numeric" aria-label="Costo sin IVA de {{d.producto}}"><button class="btn sec mini">Guardar</button></form>{% endif %}</td>

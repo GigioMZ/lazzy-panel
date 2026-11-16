@@ -57,6 +57,12 @@ GLOSARIO = {
     "efecto_mes": ("Efecto al mes", "Cuánto más (o menos) dejan estos productos al mes desde el cambio: lo que dejan por día (venta sin IVA menos costo) después, menos antes, por 26 días abiertos."),
     "elasticidad": ("Sensibilidad al precio", "Cuánto cambian las unidades vendidas por cada 1% que cambia el precio. Cerca de 0: la gente compra igual. Bajo -1: se pierden más ventas de lo que sube el precio y la subida no conviene."),
     "antes_despues": ("Antes y después", "Se comparan las 4 semanas anteriores al cambio con las 4 siguientes, por día abierto, para que no influya cuántos días tuvo cada período. Si la venta total del local también cambió, se indica, porque parte del efecto puede ser la temporada."),
+    "metas": ("Metas del mes", "Lo que quieren vender y ganar cada mes, y el máximo de costo de venta. Se ponen una vez para todos los meses y se puede cambiar un mes en particular (por ejemplo, diciembre)."),
+    "ritmo": ("A qué ritmo va el mes", "Lo vendido hasta ahora más lo que se espera vender cada día que falta, según el promedio de ese día de la semana en las últimas 8 semanas. La ganancia estimada usa el costo de venta y los gastos promedio de los últimos 3 meses cerrados."),
+    "lista_cierre": ("Lista de cierre", "Lo que tiene que estar cargado para que el resultado del mes sea definitivo. No incluye inventario: el costo sale de las facturas y del costo de cada producto."),
+    "simulador": ("Simulador", "Calcula cómo quedaría la ganancia de un mes normal si cambian precios, costos, sueldos o días abiertos. Usa el promedio de los últimos 3 meses cerrados y la sensibilidad al precio que se midió en sus propios cambios de precio (Seguimiento)."),
+    "gasto_insumo": ("Gasto al mes", "Cuánto se gasta al mes en este insumo según las recetas y lo que se vendió en los últimos 3 meses. La columna siguiente es cuánto menos ganarían al mes si su precio sube 10%."),
+    "ofertas": ("Ofertas y combos", "Para cada combo: cuánto se vende, qué descuento da contra comprar las cosas por separado y cuánto deja. Las sugerencias usan solo productos con costo cargado y un precio de combo con 10% de descuento, terminado en 90."),
 }
 
 # Nombres legibles de las categorías, agrupadas como aparecen en los selectores.

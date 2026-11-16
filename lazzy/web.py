@@ -24,7 +24,11 @@ from . import finance as F
 from . import analisis as A
 from . import insights as I
 from . import tablero as TB
+from . import estado as E
 from . import historico as H
+from . import metas as MT
+from . import ofertas as O
+from . import simulador as SIM
 from . import proveedores as PV
 from . import seguimiento as S
 from .auth import check_password
@@ -196,6 +200,14 @@ def tablero(request: Request):
     sem_tarjetas = sem if d1 >= ultimo - timedelta(days=ultimo.weekday() + 1) else TB.semanas(con, cfg, min(d1, ultimo) + timedelta(days=7))
     sparks = {k: Markup(TB.spark([s[k] for s in sem_tarjetas])) for k in ("neto", "costo_venta", "margen", "sueldos_gastos", "ganancia", "tickets")}
     base_q = f"p={clave}" if clave else f"desde={d0}&hasta={d1}"
+    meta_mes = None
+    if d0.day == 1 and d0.month == d1.month and d0.year == d1.year and ((d1 + timedelta(days=1)).day == 1 or d1 >= ultimo):
+        per_m = d0.strftime("%Y-%m")
+        mv = MT.leer(con, per_m).get("venta")
+        if mv:
+            rit = MT.ritmo(con, F.load_cfg(con), per_m)
+            real = rit["venta"] if rit else r["neto"]
+            meta_mes = {"meta": mv, "real": real, "pct": round(100 * real / mv), "rit": rit, "per": per_m}
     datos = {"dias": dias, "dias_a": [x["neto"] for x in dias_a][:len(dias)],
              "cat": TB.por_categoria(con, cfg, d0, d1), "medios": TB.medios(con, d0, d1),
              "top": TB.top_productos(con, cfg, d0, d1), "semanas": sem,
@@ -203,7 +215,7 @@ def tablero(request: Request):
     return page(request, "tablero.html", r=r, ra=ra, pre=pre, clave=clave, nombre=nombre, d0=d0, d1=d1, a0=a0, a1=a1,
                 ultimo=ultimo, datos=json.dumps(datos, default=str), n=n,
                 var={k: var(r[k], ra[k]) for k in ("neto", "costo_venta", "margen", "ganancia", "tickets", "ticket")},
-                incompleto=d1 > ultimo, cmp=cmp, sin_comparar=sin_comparar, sparks=sparks, base_q=base_q,
+                incompleto=d1 > ultimo, cmp=cmp, meta_mes=meta_mes, sin_comparar=sin_comparar, sparks=sparks, base_q=base_q,
                 sem_desde=sem_tarjetas[0]["etiqueta"] if sem_tarjetas else "")
 
 
@@ -242,15 +254,35 @@ def resumen(request: Request):
            "dif_prom": p["resultado_operacional"] - ctx["prom_ganancia"] if ctx["prom_ganancia"] is not None else None}
     top = F.margen_productos(con, per, per, F.load_cfg(con, F.fin_de_mes(per)))
     i = ps.index(per)
-    return page(request, "resumen.html", p=p, per=per, ps=ps, v=v, des=I.desglose(p) if v["con_resultado"] else [],
+    metas = MT.leer(con, per)
+    rit = MT.ritmo(con, cfg, per, p)
+    return page(request, "resumen.html", metas=metas, rit=rit, cmp_metas=MT.comparar(con, cfg, per, p, metas, rit),
+                lista=MT.checklist(con, cfg, per, p) if not parcial else [], msg=request.session.pop("msg", None), p=p, per=per, ps=ps, v=v, des=I.desglose(p) if v["con_resultado"] else [],
                 ctx=ctx, kpi=kpi, pend=I.pendientes(con, cfg, ps), chart=json.dumps(chart), pico=pico,
                 medios=F.medios_pago(con, per), top=top, parcial=parcial,
                 ant=ps[i - 1] if i > 0 else None, sig=ps[i + 1] if i < len(ps) - 1 else None)
 
 
+@app.post("/metas")
+async def metas_post(request: Request):
+    f = await form(request)
+    per = str(f.get("periodo", ""))[:7]
+    num = lambda k: (lambda v: float(v) if v else None)(str(f.get(k, "")).replace(".", "").replace(",", ".").replace("$", "").replace("%", "").strip())
+    try:
+        vals = {"venta": num("venta"), "costo_venta_pct": num("costo_venta_pct"), "resultado": num("resultado")}
+    except ValueError:
+        request.session["msg"] = "No entendí uno de los números. Escríbelos sin letras, por ejemplo 4500000."
+        return RedirectResponse(f"/mes?periodo={per}#metas", 303)
+    MT.guardar(db(), per, vals, todos=f.get("alcance") == "todos")
+    request.session["msg"] = "Metas guardadas."
+    return RedirectResponse(f"/mes?periodo={per}#metas", 303)
+
+
 @app.get("/resultados", response_class=HTMLResponse)
 def resultados(request: Request):
     user(request)
+    if request.query_params.get("vista") != "tabla":
+        return estado_resultados(request)
     con = db()
     cfg = F.load_cfg(con)
     desde, hasta, lista, ps = rango(request, con)
@@ -271,6 +303,32 @@ def resultados(request: Request):
                 prom=prom, tasa=F.tasa_tarjetas(con, cfg))
 
 
+def estado_resultados(request):
+    con = db()
+    cfg = F.load_cfg(con)
+    ps = F.periodos(con)
+    if not ps:
+        return RedirectResponse("/cargar", 303)
+    hoy = date.today().strftime("%Y-%m")
+    con_compras = [x for x in ps if x < hoy and con.execute("SELECT 1 FROM compra WHERE fecha_doc >= ? AND fecha_doc < ? LIMIT 1",
+                                                             F.mes_rango(x)).fetchone()]
+    per = request.query_params.get("periodo") or (con_compras[-1] if con_compras else ps[-1])
+    if per not in ps:
+        per = ps[-1]
+    est = E.estado(con, cfg, per, ps)
+    desde_graf = con_compras[0] if con_compras else ps[0]
+    serie = [F.pnl_mes(con, x, cfg) for x in ps[-12:] if x >= desde_graf]
+    chart = {"labels": [f"{MESES[int(x['periodo'][5:7]) - 1]} {x['periodo'][2:4]}" for x in serie],
+             "ventas": [x["ventas"]["neto"] for x in serie],
+             "resultado": [x["resultado_operacional"] if x["tiene_compras"] and x["periodo"] < hoy else None for x in serie],
+             "pct": [x["pct"]["resultado"] if x["tiene_compras"] and x["periodo"] < hoy else None for x in serie],
+             "actual": [x["periodo"] == per for x in serie]}
+    i = ps.index(per)
+    return page(request, "estado.html", e=est, per=per, ps=ps, det=E.detalle(con, cfg, per), comp=E.composicion(est["cur"]),
+                parcial=per >= hoy, ant=ps[i - 1] if i else None, sig=ps[i + 1] if i < len(ps) - 1 else None,
+                anio_ant=E.menos(per, 12), chart=json.dumps(chart), colores=E.COLOR)
+
+
 @app.get("/productos", response_class=HTMLResponse)
 def productos(request: Request):
     user(request)
@@ -281,7 +339,10 @@ def productos(request: Request):
               for d in r["productos"] if d["costo"] is not None]
     conteo = {g: sum(1 for d in r["productos"] if d["clase"] == g) for g in GRUPO_NOMBRE}
     conteo["sin"] = sum(1 for d in r["productos"] if d["costo"] is None)
-    return page(request, "productos.html", r=r, desde=desde, hasta=hasta, ps=ps, conteo=conteo,
+    S.asegurar(con)
+    segs = {x[0] for x in con.execute("SELECT DISTINCT producto FROM evento WHERE estado='activo' AND producto IS NOT NULL")}
+    return page(request, "productos.html", r=r, desde=desde, hasta=hasta, ps=ps, conteo=conteo, segs=segs,
+                of=O.resumen(con, F.load_cfg(con)),
                 grupo=request.query_params.get("grupo", ""),
                 chart=json.dumps({"puntos": puntos, "umbral": r["umbral"]}))
 
@@ -330,9 +391,22 @@ async def receta_post(request: Request):
 @app.get("/insumos", response_class=HTMLResponse)
 def insumos(request: Request):
     user(request)
-    rows = [dict(r) for r in db().execute(
+    con = db()
+    rows = [dict(r) for r in con.execute(
         "SELECT i.*, (SELECT COUNT(*) FROM receta r WHERE r.insumo_id=i.id) usos FROM insumo i ORDER BY nombre")]
-    return page(request, "insumos.html", rows=rows)
+    u = con.execute("SELECT MAX(fecha) FROM venta_producto").fetchone()[0] or date.today().isoformat()
+    desde = (date.fromisoformat(u) - timedelta(days=89)).isoformat()
+    uds = {r["producto"]: r["q"] / 3 for r in con.execute(
+        "SELECT producto, SUM(cantidad) q FROM venta_producto WHERE fecha >= ? GROUP BY producto", (desde,))}
+    origen = {}
+    for v in con.execute("SELECT * FROM vinculo WHERE tipo='insumo'"):
+        origen.setdefault(int(v["destino"]), set()).add(PV.nombre(con, v["rut"]))
+    for i in rows:
+        uso = sum(uds.get(r["producto"], 0) * r["cantidad"] for r in con.execute("SELECT * FROM receta WHERE insumo_id=?", (i["id"],)))
+        i["gasto_mes"] = round(uso * i["precio_formato"] / i["cantidad_formato"])
+        i["impacto10"] = round(i["gasto_mes"] * 0.10)
+        i["origen"] = ", ".join(sorted(origen.get(i["id"], [])))
+    return page(request, "insumos.html", rows=sorted(rows, key=lambda i: -i["gasto_mes"]))
 
 
 @app.post("/insumos")
@@ -435,10 +509,7 @@ def seguimiento(request: Request):
     user(request)
     con = db()
     cfg = F.load_cfg(con)
-    if not con.execute("SELECT 1 FROM parametro WHERE clave='seg_detectado'").fetchone():   # primera vez: revisa todo el historial
-        S.detectar(con)
-        con.execute("INSERT OR REPLACE INTO parametro VALUES ('seg_detectado', ?)", (date.today().isoformat(),))
-        con.commit()
+    S.asegurar(con)
     tipo = request.query_params.get("tipo") or None
     prod = request.query_params.get("producto") or None
     grupos = S.lista(con, cfg, tipo if tipo in S.TIPOS else None, prod)
@@ -544,7 +615,10 @@ def decisiones(request: Request):
     desde, hasta = cerrados[max(len(cerrados) - 3, 0)], cerrados[-1]
     dias, mapa = A.por_dia_semana(con), A.mapa_horas(con)
     precios, tend = A.precios_a_revisar(con, F.load_cfg(con), desde, hasta), A.tendencia_productos(con)
-    return page(request, "decisiones.html", dias=dias, mapa=mapa, est=A.estimacion(con), precios=precios,
+    sim = SIM.base(con, cfg)
+    if sim:
+        sim["elasticidad"] = SIM.elasticidad(con, cfg)
+    return page(request, "decisiones.html", sim=sim, sim_json=json.dumps(sim, default=str), dias=dias, mapa=mapa, est=A.estimacion(con), precios=precios,
                 tend=tend, rec=A.recomendaciones(dias, mapa, precios, tend), desde=desde, hasta=hasta,
                 ini=A.ventanas(con)[0])
 

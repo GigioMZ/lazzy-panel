@@ -1,0 +1,60 @@
+{% extends "base.html" %}{% block title %}Mes a mes{% endblock %}{% block main %}
+{% set c = e.cur %}
+{% macro monto(f, v) %}{% if v is none %}<span class="nota">—</span>{% else %}{{ (v if f.signo > 0 else -v)|clp }}{% endif %}{% endmacro %}
+{% macro cambio(f) %}{% if f.prev is not none and f.actual is not none %}{% if f.tipo in ('sub', 'total') %}{% set d = f.actual - f.prev %}<span class="delta {{'sube' if d >= 0 else 'baja'}}">{{'+' if d >= 0 else '-'}}{{d|abs|clp}}</span>{% elif f.var is not none %}{% set bueno = (f.var >= 0) == (f.signo > 0) %}<span class="delta {{'sube' if bueno else 'baja'}}">{{'+' if f.var > 0}}{{f.var|pct(0)}}</span>{% endif %}{% else %}<span class="nota">—</span>{% endif %}{% endmacro %}
+{% macro celdas(f) %}<span class="er-n">{{ monto(f, f.actual) }}</span>
+<span class="er-p">{% if f.pct is not none %}<span class="er-bar"><span style="width:{{ [f.pct|abs, 100]|min }}%;background:{{ colores.get(f.grupo or ('resultado' if f.tipo == 'total' else ''), '#9aa7b0') }}"></span></span>{{f.pct|pct(1)}}{% endif %}</span>
+<span class="er-c">{{ cambio(f) }}</span><span class="er-a">{{ monto(f, f.anio) }}</span><span class="er-y">{{ monto(f, f.ytd) }}</span><span class="er-yp">{{f.ytd_pct|pct(1) if f.ytd_pct is not none}}</span>{% endmacro %}
+
+<div class="cab"><h1>Mes a mes</h1>
+<form class="fila" style="margin-left:auto">{% if ant %}<a class="btn sec mini" href="/resultados?periodo={{ant}}" aria-label="Mes anterior">←</a>{% endif %}
+<select name="periodo" onchange="this.form.submit()" aria-label="Elegir mes">{% for x in ps|reverse %}<option value="{{x}}" {{'selected' if x == per}}>{{x|mesl}}</option>{% endfor %}</select>
+{% if sig %}<a class="btn sec mini" href="/resultados?periodo={{sig}}" aria-label="Mes siguiente">→</a>{% endif %}</form></div>
+
+<p class="veredicto" style="max-width:none">{{per|mesl|capitalize}}: {% if c.resultado_operacional >= 0 %}ganaste {{c.resultado_operacional|clp}}{% else %}perdiste {{c.resultado_operacional|abs|clp}}{% endif %}, {{c.pct.resultado|pct(0)}} de lo vendido.</p>
+<p class="veredicto-det">Estado de resultados sin IVA. Las compras cuentan en el mes de su factura, aunque se usen después. {{tip('por_compras')}}</p>
+{% if parcial %}<p class="aviso">El mes todavía no termina: las ventas y facturas van hasta hoy.</p>
+{% elif not c.tiene_compras %}<p class="aviso">Falta el archivo de compras del SII de este mes. Sin él, los costos están incompletos y el resultado sale mejor de lo real. <a href="/cargar">Subir archivos</a></p>{% endif %}
+
+{% if comp %}<section class="bloque"><h2>De cada $1.000 que vendiste</h2>
+<div class="mil-barra" role="img" aria-label="Reparto de cada mil pesos vendidos">{% for x in comp if x.ancho > 0 %}<span style="width:{{x.ancho}}%;background:{{x.color}}" title="{{x.nombre}}: {{x.por_mil|clp}}"></span>{% endfor %}</div>
+<ul class="mil-ley">{% for x in comp %}<li><i style="background:{{x.color}}"></i>{{x.nombre}} <b>{{x.por_mil|clp}}</b></li>{% endfor %}</ul></section>{% endif %}
+
+<section class="bloque"><h2>Estado de resultados</h2>
+<p class="sub">Haz clic en una línea para ver sus facturas y gastos. Los costos van con signo menos.{% if e.ytd_meses|length > 1 %} El acumulado suma {{e.ytd_meses|map('mes')|join(', ')}}{% if e.ytd_meses|length < per[5:7]|int %} (solo meses con facturas del SII){% endif %}.{% endif %}</p>
+<div class="er {{'sin-anio' if not e.anio}}" role="table" aria-label="Estado de resultados de {{per|mesl}}">
+<div class="er-row er-head" role="row"><span class="er-l"></span><span class="er-n">{{per|mes}}</span><span class="er-p">% de la venta</span><span class="er-c">vs {{(ant|mes) if ant else 'mes anterior'}}</span><span class="er-a">{{anio_ant|mes}}</span><span class="er-y">Acumulado {{per[:4]}}</span><span class="er-yp">%</span></div>
+{% for f in e.filas %}
+{% if f.tipo == 'cat' %}{% set docs = det.get(f.cat, []) %}
+<details class="er-det"><summary class="er-row er-cat" role="row"><span class="er-l">{{f.cat|cat}} {% if docs %}<span class="er-cnt" title="{{docs|length}} documentos">{{docs|length}}</span>{% endif %}</span>{{ celdas(f) }}</summary>
+{% if docs %}<ul class="er-docs">{% for d in docs[:40] %}<li><span>{% if d.rut %}<a href="/proveedor?rut={{d.rut}}">{{d.nombre}}</a>{% else %}{{d.nombre}}{% endif %} <span class="nota">{{d.doc}}{% if d.fecha %}, {{d.fecha[8:10]}}-{{d.fecha[5:7]}}{% endif %}</span></span><b>{{d.monto|clp}}</b></li>{% endfor %}
+{% if docs|length > 40 %}<li class="nota">y {{docs|length - 40}} más</li>{% endif %}</ul>{% else %}<p class="nota er-docs">Este mes no hay documentos en esta categoría.</p>{% endif %}</details>
+{% else %}<div class="er-row er-{{f.tipo}}" role="row"><span class="er-l">{{f.nombre}} {% if f.clave %}{{tip(f.clave)}}{% endif %}{% if f.tipo == 'grupo' and f.grupo == 'sin_clasificar' %} <a class="nota" href="/compras">clasificar</a>{% endif %}</span>{{ celdas(f) }}</div>{% endif %}
+{% endfor %}
+</div>
+{% if c.inversion %}<p class="nota">Además compraste equipos por {{c.inversion|clp}}. No se resta del resultado porque dura años. {{tip('equipos')}}</p>{% endif %}
+</section>
+
+<section class="dos bloque">
+<div class="panel"><h2>Indicadores del mes</h2><dl class="ind">
+<div><dt>Insumos + sueldos por cada $1.000 {{tip('insumos_sueldos')}}</dt><dd>{{ (c.pct.prime_cost * 10)|round|int|clp }} <span class="nota">sano: bajo $600</span></dd></div>
+<div><dt>Venta para no perder {{tip('equilibrio')}}</dt><dd>{{c.equilibrio.venta_neta_mes|clp}} <span class="nota">al mes sin IVA</span></dd></div>
+<div><dt>Días abiertos</dt><dd>{{c.ventas.dias_abiertos}} <span class="nota">{{ (c.ventas.neto / c.ventas.dias_abiertos)|clp if c.ventas.dias_abiertos }} por día</span></dd></div>
+<div><dt>Ventas {{tip('ticket')}}</dt><dd>{{c.ventas.tickets|num}} <span class="nota">promedio {{c.ventas.ticket_promedio|clp}} con IVA</span></dd></div>
+<div><dt>Comisión de tarjetas {{tip('comision_tarjetas')}}</dt><dd>{{c.comision.monto|clp}} <span class="nota">{{c.comision.pct|pct(2)}} de lo cobrado con tarjeta{{', estimada' if c.comision.estimada}}</span></dd></div>
+</dl></div>
+<div class="panel"><h2>Resultado de cada mes</h2><p class="sub">Ganancia o pérdida operacional. Los meses sin facturas del SII no aparecen.</p>
+<div class="grafico" style="height:230px"><canvas id="gRes" role="img" aria-label="Resultado operacional por mes"></canvas></div></div>
+</section>
+<p class="nota"><a href="/resultados?vista=tabla">Ver varios meses lado a lado</a></p>
+{% endblock %}
+{% block js %}<script src="/static/chart.umd.js"></script><script>
+LZ.base();
+var D = {{chart|safe}};
+new Chart(document.getElementById('gRes'), {type: 'bar', data: {labels: D.labels, datasets: [{data: D.resultado,
+  backgroundColor: D.resultado.map(function (v, i) { return v === null ? '#ccc' : (v >= 0 ? '#1f9e78' : '#c94f63'); }),
+  borderColor: D.actual.map(function (a) { return a ? '#203548' : 'transparent'; }), borderWidth: 2, borderRadius: 4, maxBarThickness: 34}]},
+  options: {plugins: {legend: {display: false}, tooltip: {callbacks: {label: function (c) {
+    return c.raw === null ? 'Sin facturas del SII' : LZ.clp(c.raw) + ' (' + String(D.pct[c.dataIndex]).replace('.', ',') + '% de ' + LZ.corto(D.ventas[c.dataIndex]) + ')'; }}}},
+    scales: {y: {ticks: {callback: LZ.corto, maxTicksLimit: 5}}, x: {grid: {display: false}}}}});
+</script>{% endblock %}

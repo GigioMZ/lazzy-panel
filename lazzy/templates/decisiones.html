@@ -4,6 +4,23 @@
 
 {% if rec %}<section class="bloque"><h2>Recomendaciones</h2><ul class="pend">{% for r in rec %}<li><p><b>{{r.titulo}}.</b> {{r.texto}}</p></li>{% endfor %}</ul></section>{% endif %}
 
+{% if sim %}<section class="bloque sim" id="simulador"><h2>¿Qué pasa si…? {{tip('simulador')}}</h2>
+<p class="sub">Mueve los números y mira cómo cambiaría la ganancia de un mes normal. Parte del promedio de {{sim.meses|map('mesl')|join(', ')}}. Montos sin IVA.</p>
+<div class="sim-grid"><form class="panel sim-in" onsubmit="return false" aria-label="Supuestos">
+<label class="campo"><span>Subir (o bajar) los precios de la carta <b data-o="precio"></b></span><input type="range" id="precio" min="-15" max="25" step="1" value="0"></label>
+<label class="campo"><span>Sensibilidad al precio <b data-o="elas"></b> {{tip('elasticidad')}}</span><input type="range" id="elas" min="-2" max="0" step="0.05" value="{{sim.elasticidad.valor}}"><span class="nota">{{sim.elasticidad.texto}}</span></label>
+<label class="campo"><span>Alza de insumos y productos comprados <b data-o="costo"></b></span><input type="range" id="costo" min="-15" max="30" step="1" value="0"></label>
+<label class="campo"><span>Sueldo extra al mes</span><input id="sueldo" inputmode="numeric" placeholder="0" value=""><span class="nota">Por ejemplo, otra persona media jornada.</span></label>
+<div class="campos dos-c"><label class="campo"><span>Días extra abiertos al mes</span><input id="dias" type="number" min="0" max="10" value="0"></label>
+<label class="campo"><span>Venta de cada día extra</span><input id="vdia" inputmode="numeric" value="{{ (sim.dias|selectattr('nombre','equalto','sábado')|map(attribute='venta')|first) or (sim.venta // (sim.dias_abiertos or 26)) }}"></label></div>
+<p class="nota">Referencia sin IVA: {% for d in sim.dias %}{{d.nombre}} {{d.venta|clp}}{{', ' if not loop.last}}{% endfor %}.{% if sim.cerrados %} Hoy cierran: {{sim.cerrados|join(', ')}}.{% endif %}</p>
+<label class="campo"><span>Costo de personal por cada día extra</span><input id="cdia" inputmode="numeric" placeholder="0" value=""></label>
+<label class="campo"><span>Otro gasto fijo al mes (publicidad, arriendo, equipo)</span><input id="otro" inputmode="numeric" placeholder="0" value=""></label>
+<button type="button" class="btn sec mini" id="sim-reset">Volver a cero</button></form>
+<div class="sim-out"><p class="veredicto sim-v" id="sim-v" aria-live="polite"></p><p class="veredicto-det" id="sim-d"></p>
+<div class="tabla"><table><thead><tr><th class="l"></th><th>Hoy, mes promedio</th><th>Con los cambios</th><th>Diferencia</th></tr></thead><tbody id="sim-t"></tbody></table></div>
+<p class="nota">Supone que los cambios de precio afectan a toda la carta y que la gente compra según la sensibilidad indicada. Es una estimación para comparar opciones, no una promesa.</p></div></div></section>{% endif %}
+
 <section class="bloque"><h2>Esta semana deberías vender {{est.total|clp}} {{ tip('estimacion') }}</h2>
 <p class="sub">Con IVA, como lo ves en caja. {% if est.tendencia is not none %}Las ventas de las últimas 4 semanas van {{ est.tendencia|abs|pct }} {{ 'arriba' if est.tendencia >= 0 else 'abajo' }} de las 4 anteriores {{ tip('tendencia') }}{% if est.topado %} (para estimar se usa como máximo 15%){% endif %}.{% endif %}</p>
 <div class="tabla" style="max-width:760px"><table><tr><th>Día</th><th>Venta estimada</th><th>Rango normal</th><th>Ventas (clientes)</th></tr>
@@ -35,3 +52,42 @@
 <div><h3>{{titulo}}</h3><div class="tabla"><table><tr><th>Producto</th><th>4 semanas antes</th><th>Últimas 4</th><th>Cambio</th></tr>
 {% for x in lista[:10] %}<tr><td>{{x.producto}}</td><td>{{x.ant}}</td><td>{{x.rec}}</td><td class="{{'malo' if x.cambio < 0}}">{{ '▲' if x.cambio > 0 else '▼' }} {{x.cambio|abs|pct(0)}}</td></tr>{% endfor %}
 {% if not lista %}<tr><td colspan="4" class="l">Ninguno</td></tr>{% endif %}</table></div></div>{% endfor %}</div></section>{% endblock %}
+{% block js %}{% if sim %}<script>
+(function () {
+  var B = {{sim_json|safe}}, $ = function (id) { return document.getElementById(id); };
+  var num = function (id) { return parseFloat(String($(id).value).replace(/\./g, '').replace(',', '.')) || 0; };
+  var pct = function (v) { return (v > 0 ? '+' : '') + String(Math.round(v * 10) / 10).replace('.', ',') + '%'; };
+  function calc() {
+    var p = num('precio'), e = parseFloat($('elas').value), c = num('costo');
+    var u = Math.max(0, 1 + e * p / 100), dias = num('dias'), vd = num('vdia');
+    var cvr = B.venta ? B.costo / B.venta : 0;
+    var venta = B.venta * (1 + p / 100) * u + dias * vd;
+    var costo = (B.costo * u + dias * vd * cvr) * (1 + c / 100);
+    var sueldos = B.sueldos + num('sueldo') + dias * num('cdia');
+    var gastos = B.gastos + num('otro') + venta * B.comision_pct + B.otros;
+    var g0 = B.gastos + B.venta * B.comision_pct + B.otros;
+    var r0 = B.venta - B.costo - B.sueldos - g0, r1 = venta - costo - sueldos - gastos;
+    var filas = [['Venta', B.venta, venta, 1], ['Costo de venta', B.costo, costo, -1], ['Margen bruto', B.venta - B.costo, venta - costo, 1],
+                 ['Sueldos', B.sueldos, sueldos, -1], ['Gastos del local y tarjetas', g0, gastos, -1], ['Ganancia del mes', r0, r1, 1]];
+    $('sim-t').innerHTML = filas.map(function (f) {
+      var d = f[2] - f[1], bueno = d * f[3] >= 0, fuerte = f[0] === 'Ganancia del mes' || f[0] === 'Margen bruto';
+      return '<tr class="' + (fuerte ? 'fuerte' : '') + '"><td class="l">' + f[0] + '</td><td>' + LZ.clp(f[1]) + '</td><td>' + LZ.clp(f[2]) + '</td><td>' +
+        (Math.abs(d) < 1 ? '—' : '<span class="delta ' + (bueno ? 'sube' : 'baja') + '">' + (d > 0 ? '+' : '-') + LZ.clp(Math.abs(d)) + '</span>') + '</td></tr>';
+    }).join('');
+    var d = r1 - r0;
+    $('sim-v').textContent = Math.abs(d) < 1000 ? 'Sin cambios: ganarías lo mismo, unos ' + LZ.clp(r0) + ' al mes.' :
+      (d > 0 ? 'Ganarías ' + LZ.clp(d) + ' más al mes.' : 'Ganarías ' + LZ.clp(-d) + ' menos al mes.');
+    $('sim-d').textContent = Math.abs(d) < 1000 ? '' : 'Pasarías de ' + LZ.clp(r0) + ' a ' + LZ.clp(r1) + ' de ganancia (' + (r1 / (venta || 1) * 100).toFixed(0) + '% de la venta).' +
+      (p ? ' Con el precio ' + pct(p) + ' se venderían ' + pct((u - 1) * 100) + ' unidades.' : '');
+    document.querySelectorAll('[data-o]').forEach(function (b) {
+      var k = b.dataset.o; b.textContent = k === 'elas' ? String($(k).value).replace('.', ',') : pct(num(k));
+    });
+  }
+  document.querySelectorAll('.sim-in input').forEach(function (i) { i.addEventListener('input', calc); });
+  $('sim-reset').addEventListener('click', function () {
+    ['precio', 'costo', 'dias'].forEach(function (k) { $(k).value = 0; }); ['sueldo', 'cdia', 'otro'].forEach(function (k) { $(k).value = ''; });
+    $('elas').value = {{sim.elasticidad.valor}}; calc();
+  });
+  calc();
+})();
+</script>{% endif %}{% endblock %}

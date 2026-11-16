@@ -9,6 +9,9 @@
 <p class="veredicto" style="max-width:none">Vendiste {{r.neto|clp}}, te costó {{r.costo_venta|clp}} y te {{ 'quedaron' if r.ganancia >= 0 else 'faltaron' }} {{r.ganancia|abs|clp}}.</p>
 <p class="veredicto-det">Montos sin IVA. La ganancia es estimada: costo de lo vendido según la receta o la última factura de cada producto, y sueldos y gastos repartidos por día. {{ tip('ganancia_est') }}</p>
 
+{% if meta_mes %}{% set mm = meta_mes %}<div class="meta-tab"><div><b>Meta de venta de {{mm.per|mesl}}: {{mm.meta|clp}}</b>
+<span class="nota">Llevas {{mm.real|clp}} ({{mm.pct}}%){% if mm.rit %} con el {{mm.rit.avance}}% del mes. Al ritmo normal cierras en {{mm.rit.proy_venta|clp}}{% if mm.rit.proy_venta >= mm.meta %}: la cumples{% else %}: faltarían {{(mm.meta - mm.rit.proy_venta)|clp}}{% endif %}{% endif %}. <a href="/mes?periodo={{mm.per}}#metas">Ver metas</a></span></div>
+<div class="meta-barra grande"><span style="width:{{ [mm.pct, 100]|min }}%"></span>{% if mm.rit %}<i style="left:{{mm.rit.avance}}%" title="Parte del mes que pasó"></i>{% endif %}</div></div>{% endif %}
 <div class="tarjetas">
 <div class="tarjeta"><div class="t">Vendiste {{ tip('venta_neta') }}</div><div class="n">{{r.neto|clp}}</div><div class="d">{{ delta(var.neto) }} {{r.bruto|clp}} con IVA</div>{{sparks.neto}}</div>
 <div class="tarjeta"><div class="t">Costo de lo vendido {{ tip('costo_vendido') }}</div><div class="n">{{r.costo_venta|clp}}</div><div class="d">{{ delta(var.costo_venta, true) }} {{ (100*r.costo_venta/r.neto)|pct(0) if r.neto }} de la venta</div>{{sparks.costo_venta}}</div>

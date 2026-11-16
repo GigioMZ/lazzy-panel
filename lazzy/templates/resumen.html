@@ -10,6 +10,27 @@
 {% if kpi.dif_prom is not none %}{{ kpi.dif_prom|abs|clp }} {{ 'más' if kpi.dif_prom >= 0 else 'menos' }} que el promedio de {{ 'los ' ~ ctx.n_prom ~ ' meses anteriores' if ctx.n_prom > 1 else 'el mes anterior' }}.{% endif %}</p>
 {% elif not parcial %}<p><a class="btn" href="/cargar">Subir compras del SII</a></p>{% endif %}
 
+{% macro fmeta(k, v) %}{% if v is none %}—{% elif k == 'costo_venta_pct' %}{{v|pct(0)}}{% else %}{{v|clp}}{% endif %}{% endmacro %}
+<section class="bloque" id="metas"><h2>Metas del mes {{tip('metas')}}</h2>
+{% if msg %}<p class="aviso ok">{{msg}}</p>{% endif %}
+{% if rit %}<p class="sub">Ventas cargadas hasta el {{rit.hasta.day}}/{{rit.hasta.month}} ({{rit.avance}}% del mes). Si cada día que falta vende lo normal para ese día de la semana, cierras con <b>{{rit.proy_venta|clp}}</b> sin IVA{% if rit.proy_resultado is not none %} y una ganancia cercana a <b>{{rit.proy_resultado|clp}}</b>{% endif %}. {{tip('ritmo')}}</p>{% endif %}
+{% if cmp_metas %}<div class="metas">{% for m in cmp_metas %}<div class="meta-c {{m.estado}}"><div class="t">{{m.nombre}}{% if m.proyectado %} <span class="nota">al cierre, estimado</span>{% endif %}</div>
+<div class="n">{{ fmeta(m.clave, m.real) }}</div>
+<div class="d">Meta {{ fmeta(m.clave, m.meta) }}. {% if m.real is none %}Falta el SII para saberlo.{% elif m.proyectado %}{{ 'Vas camino a cumplirla.' if m.estado == 'ok' else ('Vas justo.' if m.estado == 'warn' else 'A este ritmo no llegas.') }}{% if m.clave == 'venta' %} Llevas {{m.actual|clp}}.{% endif %}{% else %}{{ 'Cumplida.' if m.estado == 'ok' else ('Casi.' if m.estado == 'warn' else 'No se cumplió.') }}{% endif %}</div>
+{% if m.avance is not none %}<div class="meta-barra"><span style="width:{{ [m.avance, 100]|min }}%"></span></div>{% endif %}</div>{% endfor %}</div>
+{% else %}<p class="aviso">Todavía no hay metas. Pon cuánto quieren vender y ganar al mes, y el panel les dirá si van bien.</p>{% endif %}
+<details class="panel anotar" {{'open' if not cmp_metas}}><summary><b>{{'Cambiar' if cmp_metas else 'Poner'}} metas</b></summary>
+<form method="post" action="/metas"><input type="hidden" name="csrf" value="{{csrf}}"><input type="hidden" name="periodo" value="{{per}}">
+<div class="campos"><label class="campo"><span>Venta sin IVA al mes</span><input name="venta" inputmode="numeric" value="{{ metas.venta|int if metas.venta }}" placeholder="4500000"></label>
+<label class="campo"><span>Costo de venta, máximo % de la venta</span><input name="costo_venta_pct" inputmode="decimal" value="{{ metas.costo_venta_pct|round(1) if metas.costo_venta_pct }}" placeholder="32"></label>
+<label class="campo"><span>Ganancia del mes</span><input name="resultado" inputmode="numeric" value="{{ metas.resultado|int if metas.resultado }}" placeholder="1000000"></label></div>
+<p class="radios"><label><input type="radio" name="alcance" value="todos" checked> Para todos los meses</label> <label><input type="radio" name="alcance" value="mes"> Solo {{per|mesl}}</label></p>
+<p><button class="btn">Guardar metas</button> <span class="nota">Deja vacío lo que no quieras medir.</span></p></form></details></section>
+
+{% if lista %}{% set listos = lista|selectattr('ok')|list|length %}<section class="bloque"><h2>Lista de cierre {{tip('lista_cierre')}}</h2>
+<p class="sub">{% if listos == lista|length %}Todo listo: los números de {{per|mesl}} son definitivos.{% else %}{{listos}} de {{lista|length}} listos. Lo que falta hace que el resultado no sea definitivo.{% endif %}</p>
+<ul class="check">{% for x in lista %}<li class="{{'ok' if x.ok}}"><span class="ck" aria-hidden="true">{{'✓' if x.ok else '!'}}</span><div><b>{{x.texto}}</b><br><span class="nota">{{x.detalle}}</span></div>{% if not x.ok %}<a class="btn sec mini" href="{{x.url}}">{{x.accion}}</a>{% endif %}</li>{% endfor %}</ul></section>{% endif %}
+
 {% if des %}<section class="bloque"><h2>¿En qué se fue cada $1.000 que vendiste?</h2>
 <p class="sub">Vendiste {{p.ventas.neto|clp}} sin IVA. Así se repartió esa plata.{% if p.comision.estimada %} La comisión de tarjetas de este mes ({{p.comision.monto|clp}}) es estimada porque todavía no llega la factura de Transbank. {{ tip('comision_estimada') }}{% endif %}</p>
 <div class="mil">{% for f in des %}{% if loop.last %}<div class="total"></div>{% endif %}
