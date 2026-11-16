@@ -31,7 +31,9 @@ from . import iva as IVA
 from . import metas as MT
 from . import ofertas as O
 from . import simulador as SIM
+from . import pedidos as PD
 from . import stock as ST
+from . import vitrina as VT
 from . import proveedores as PV
 from . import seguimiento as S
 from .auth import check_password
@@ -578,7 +580,13 @@ def stock_page(request: Request):
         "ORDER BY 1")]
     mes = date.today().strftime("%Y-%m")
     entradas = [dict(r) for r in con.execute("SELECT * FROM stock_entrada ORDER BY id DESC LIMIT 15")]
-    return page(request, "stock.html", sug=ST.sugerencias(con), entradas=entradas, prods=ST.productos(con),
+    pa, provs = VT.ajustes(con), PD.proveedores(con)
+    ajuste = [{"producto": p, "vida": VT.vida(con, p, pa), "objetivo": (pa.get(p) or {}).get("objetivo"),
+               "proveedor": (pa.get(p) or {}).get("proveedor") or ""} for p in ST.productos(con)]
+    pedidos = PD.sugerido(con, cfg)
+    return page(request, "stock.html", vitrina=sorted(VT.estado(con), key=lambda x: (x["dias"], x["producto"])), pedidos=pedidos,
+                ajuste=ajuste, provs=provs, dias_prov=[(g["rut"], g["nombre"], g["dias"]) for g in pedidos if g["rut"]],
+                mensaje_pedido=PD.mensaje, sug=ST.sugerencias(con), entradas=entradas, prods=ST.productos(con),
                 hoy=date.today().isoformat(), msg=request.session.pop("msg", None), filas=filas, ajustes=aj, ultimo=ult, sin_vinculo=sin_vinculo,
                 valor=sum(f["valor"] or 0 for f in filas), merma=ST.merma_mes(con, mes, cfg), mes=mes,
                 dias=(date.today() - date.fromisoformat(ult)).days if ult else None)
@@ -602,6 +610,22 @@ async def stock_post(request: Request):
     elif acc == "borrar_llegada":
         con.execute("DELETE FROM stock_entrada WHERE id=?", (int(f["id"]),))
         con.commit()
+    elif acc == "ajustes":
+        def num(k):
+            try:
+                return float(str(f.get(k, "")).replace(",", ".")) if str(f.get(k, "")).strip() else None
+            except ValueError:
+                return None
+        for p in ST.productos(con):
+            v, o = num(f"vida:{p}"), num(f"obj:{p}")
+            VT.guardar_ajuste(con, p, int(v) if v and v > 0 else None, o if o is not None and o >= 0 else None,
+                              str(f.get(f"prov:{p}", "")).strip() or None)
+        for k in f.keys():
+            if str(k).startswith("dias:"):
+                d = num(k)
+                if d and d > 0:
+                    PD.guardar_dias(con, str(k)[5:], d)
+        request.session["msg"] = "Ajustes guardados."
     elif acc == "vincular":
         for v in f.getlist("v"):
             rut, _, resto = str(v).partition("|")

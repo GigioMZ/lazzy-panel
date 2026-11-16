@@ -119,11 +119,27 @@ def stock_bajo(con, hoy):
             + ". Si ya llegó el pedido, mándame la factura o escribe «llegaron N producto»."]
 
 
+def vitrina(con, hoy):
+    """Lo que en vitrina llega a su último día hoy o mañana y, a su ritmo, todavía no se habría vendido."""
+    from . import vitrina as VT
+    cfg = F.load_cfg(con)
+    lotes = [x for x in VT.por_vencer(con, hoy) if _nuevo(con, f"vitrina:{x['producto']}:{x['fecha']}:{x['dias']}")]
+    if not lotes:
+        return []
+    t = ["🍰 Vitrina:"]
+    for x in lotes:
+        t.append(f"• {VT.texto_lote(x)}. {VT.idea(con, cfg, x['producto'], max(round(x['quedan']), 1))}.")
+    if any(x["estimado"] for x in lotes):
+        t.append("(~ estimado con su ritmo de venta, porque las ventas de los últimos días no se suben aún).")
+    t.append("Si quedan otros: «en vitrina quedan 2 cheesecake berries». Lo que se bote: «se botaron 2 cheesecake berries por vencidos».")
+    return ["\n".join(t)]
+
+
 def revisar(con, hoy=None):
     """Corre todos los avisos y los deja en la cola del bot. Devuelve los textos nuevos."""
     hoy = hoy or date.today()
     textos = []
-    for fn in (alzas, dias_bajos, facturas_faltantes, metas, servicios, stock_bajo):
+    for fn in (alzas, dias_bajos, facturas_faltantes, metas, servicios, stock_bajo, vitrina):
         try:
             textos += fn(con, hoy)
         except Exception as e:  # un aviso que falla no detiene los demás

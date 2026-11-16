@@ -21,7 +21,9 @@ from . import alertas as AL
 from . import iva as IVA
 from . import preguntas as P
 from . import seguimiento as S
+from . import pedidos as PD
 from . import stock as ST
+from . import vitrina as VT
 from .db import connect
 from .glosario import CATEGORIAS_UI
 from .importers.fudo_report import import_fudo_productos, import_fudo_report
@@ -40,6 +42,9 @@ AYUDA = """Hola, soy el bot de Lazzy. Me puedes mandar:
   - Ajustes después de contar: "quedan 12 brownies" o "hay 5 tiramisú y 8 carrot cake".
   - Merma: "se botaron 2 tiramisú por vencidos" o "merma 1 cheesecake berries".
   - Con cada factura de un producto vinculado te digo cuánto debería quedar.
+• Vitrina: "saqué 8 cheesecake berries, 4 brownies". Lo congelado no vence; desde que sale a vitrina cuento sus días
+  y el último día te aviso lo que quedaría, con una idea para venderlo. Si quedan menos: "en vitrina quedan 2 cheesecake berries".
+• Pedidos: /pedido arma lo que hay que pedir a cada proveedor según lo que se vende, listo para copiar. "/pedido cake" para uno.
 • Preguntas: "¿cuánto vendimos la semana pasada?", "¿qué producto deja menos?", "¿cómo va el mes contra la meta?".
 
 Además te aviso solo si un proveedor sube un precio, si un día vendió muy bajo lo normal, si no llega la factura de
@@ -49,7 +54,9 @@ Comandos:
 /resumen: cómo va la semana
 /mes: cómo va el mes y a cuánto va a cerrar
 /stock: qué debería haber hoy, y lo que está bajo el mínimo
-/deshacer: borra lo último que guardé (una factura con sus costos, un gasto o un movimiento de stock)
+/vitrina: qué hay en vitrina y cuándo vence
+/pedido: qué pedir a cada proveedor
+/deshacer: borra lo último que guardé (una factura con sus costos, un gasto, un movimiento de stock o de vitrina)
 Antes de guardar una factura puedes tocar «Corregir cantidad o precio» para arreglar un producto.
 /ayuda: este mensaje
 
@@ -166,6 +173,12 @@ class Bot:
                 return self.tg.enviar(chat, texto_stock(self.con))
             if texto in ("/mes", "/hoy"):
                 return self.tg.enviar(chat, resumen_mes(self.con))
+            if texto == "/vitrina":
+                return self.tg.enviar(chat, texto_vitrina(self.con))
+            low = texto.lower().strip("¿?¡! ")
+            if low.startswith("/pedido") or low.startswith("pedido ") or low in ("pedido", "qué pedimos", "que pedimos", "qué pido", "que pido"):
+                arg = texto.split(maxsplit=1)[1] if len(texto.split(maxsplit=1)) > 1 and low.startswith(("/pedido", "pedido")) else ""
+                return self.tg.enviar(chat, texto_pedido(self.con, arg))
             if m.get("document"):
                 return self.documento(chat, usuario, m["document"])
             if m.get("photo"):
@@ -176,6 +189,9 @@ class Bot:
                 return self.proponer(chat, usuario, C.leer_imagen(self.con, datos), ruta)
             if texto:
                 self.tg("sendChatAction", chat_id=chat, action="typing")
+                vt = VT.parsear(self.con, texto)
+                if vt is not None:
+                    return self.tg.enviar(chat, self.vitrina_msg(chat, vt, usuario))
                 st = ST.parsear_stock(self.con, texto)
                 if st is not None:
                     return self.tg.enviar(chat, self.stock_msg(chat, st, usuario))
@@ -283,6 +299,30 @@ class Bot:
                           json.dumps({"clase": "stock", "texto": txt}, ensure_ascii=False), json.dumps(ref)))
         self.con.commit()
         return txt + "\n\nSi algo quedó mal: /deshacer, o escribe «quedan N producto» para corregir."
+
+    def vitrina_msg(self, chat, vt, usuario):
+        """«saqué 8 cheesecake berries» (a vitrina) o «en vitrina quedan 2 cheesecake berries»."""
+        if not vt["items"]:
+            return ("No encontré " + ", ".join(f"«{x}»" for x in vt["faltan"]) + " en el stock. Escribe el nombre como está en FUDO, "
+                    "por ejemplo «saqué 8 cheesecake berries, 4 brownies».")
+        hoy = datetime.now(ZONA).date()
+        ids = [VT.registrar(self.con, p, n, vt["tipo"], hoy.isoformat(), f"bot ({usuario})") for p, n in vt["items"]]
+        aj = VT.ajustes(self.con)
+        if vt["tipo"] == "saca":
+            lineas = []
+            for p, n in vt["items"]:
+                fin = hoy + timedelta(days=VT.vida(self.con, p, aj) - 1)
+                lineas.append(f"• {n:g} {p}: en vitrina hasta el {DIAS_C[fin.weekday()]} {fin.day}/{fin.month}")
+            txt = "Anoté lo que salió a vitrina:\n" + "\n".join(lineas) + "\nEl último día te aviso lo que quedaría, a su ritmo de venta."
+        else:
+            txt = "Anoté lo que hay en vitrina:\n" + "\n".join(f"• {p}: {n:g}" for p, n in vt["items"])
+        if vt["faltan"]:
+            txt += "\nNo reconocí: " + ", ".join(vt["faltan"])
+        self.con.execute("INSERT INTO captura(chat_id,usuario,creado,estado,tipo,datos,resultado) VALUES (?,?,?,?,?,?,?)",
+                         (chat, usuario, datetime.now().isoformat(timespec="seconds"), "guardado", "stock",
+                          json.dumps({"clase": "stock", "texto": txt}, ensure_ascii=False), json.dumps({"tipo": "vitrina", "ids": ids})))
+        self.con.commit()
+        return txt + "\n\nSi algo quedó mal: /deshacer."
 
     def f29(self, datos):
         d = IVA.leer_f29(self.con, datos)
@@ -404,7 +444,10 @@ class Bot:
         if not f:
             return "No hay nada tuyo que deshacer."
         ref, datos = json.loads(f["resultado"]), json.loads(f["datos"])
-        if ref.get("tipo") == "stock":
+        if ref.get("tipo") == "vitrina":
+            for i in ref["ids"]:
+                self.con.execute("DELETE FROM vitrina WHERE id=?", (i,))
+        elif ref.get("tipo") == "stock":
             for i in ref["entradas"]:
                 self.con.execute("DELETE FROM stock_entrada WHERE id=?", (i,))
             for fecha, p in ref["conteos"]:
@@ -438,6 +481,41 @@ def texto_stock(con):
     if uv:
         t.append(f"Las ventas están descontadas hasta el {uv[8:10]}/{uv[5:7]}.")
     return "\n".join(t)
+
+
+DIAS_C = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
+
+
+def texto_vitrina(con):
+    hoy = datetime.now(ZONA).date()
+    lotes = VT.estado(con, hoy)
+    if not lotes:
+        return "No hay nada anotado en vitrina. Cuando saquen algo del congelador: «saqué 8 cheesecake berries, 4 brownies»."
+    t = ["En vitrina, según lo que sacaron y lo vendido:"]
+    for x in sorted(lotes, key=lambda x: (x["dias"], x["producto"])):
+        cuando = "hoy es su último día" if x["dias"] == 0 else "mañana es su último día" if x["dias"] == 1 else f"le quedan {x['dias'] + 1} días"
+        t.append(f"• {'~' if x['estimado'] else ''}{x['quedan']:g} {x['producto']} (sacados el {x['fecha'][8:10]}/{x['fecha'][5:7]}): {cuando}")
+    uv = con.execute("SELECT MAX(fecha) FROM venta_producto").fetchone()[0]
+    if any(x["estimado"] for x in lotes) and uv:
+        t.append(f"\n~ Las ventas desde el {uv[8:10]}/{uv[5:7]} todavía no se suben, así que las estimo con su ritmo normal. "
+                 "Si ven otra cosa: «en vitrina quedan 2 cheesecake berries».")
+    return "\n".join(t)
+
+
+def texto_pedido(con, arg=""):
+    gs = PD.sugerido(con, F.load_cfg(con), datetime.now(ZONA).date())
+    if not gs:
+        return "Para sugerir pedidos necesito el stock: mándame el Excel de stock de FUDO."
+    if arg:
+        gs = PD.buscar_grupo(gs, arg)
+        if not gs:
+            return f"No encontré un proveedor o producto parecido a «{arg}». Prueba con /pedido solo."
+    else:
+        gs = [g for g in gs if g["total"]] or gs[:1]
+    t = "\n\n".join(PD.texto_bot(g) for g in gs)
+    if any(not g["rut"] for g in gs):
+        t += "\n\nPara separar los productos sin proveedor, elijan su proveedor en https://panel.lazzycoffee.cl/stock"
+    return t + "\n\nEl objetivo y los días entre pedidos se ajustan en https://panel.lazzycoffee.cl/stock"
 
 
 def resumen_mes(con):
@@ -564,6 +642,8 @@ def main():
     tg("setMyCommands", commands=[{"command": "resumen", "description": "Cómo va la semana"},
                                   {"command": "mes", "description": "Cómo va el mes"},
                                   {"command": "stock", "description": "Qué debería haber hoy"},
+                                  {"command": "vitrina", "description": "Qué hay en vitrina y cuándo vence"},
+                                  {"command": "pedido", "description": "Qué pedir a cada proveedor"},
                                   {"command": "deshacer", "description": "Borra lo último que guardé"},
                                   {"command": "ayuda", "description": "Qué puedo hacer"}])
     offset, espera = None, 1

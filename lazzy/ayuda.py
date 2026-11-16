@@ -17,9 +17,15 @@ def rutina(con, hoy=None):
     bot = con.execute("SELECT MAX(fecha_doc) FROM compra WHERE origen='bot'").fetchone()[0]
     pago = IVA.fecha_pago(ant)
     st = con.execute("SELECT MAX(fecha) FROM stock_conteo").fetchone()[0]
+    vt = con.execute("SELECT MAX(fecha) FROM vitrina").fetchone()[0]
     return [
         {"cuando": "Cada día", "que": "Mandar al bot cada factura apenas llega (PDF o foto) y las cuentas de luz y agua.",
          "ok": bool(bot and (hoy - date.fromisoformat(bot)).days <= 4), "estado": f"última por el bot: {bot}" if bot else "ninguna todavía"},
+        {"cuando": "Cada vez que saquen algo del congelador", "que": "Escribirle al bot lo que salió a vitrina: «saqué 8 cheesecake berries, 4 brownies». "
+         "Con eso avisa el último día de cada tanda.", "ok": bool(vt and (hoy - date.fromisoformat(vt)).days <= 3),
+         "estado": f"última anotada: {vt}" if vt else "nada anotado todavía", "url": "/stock"},
+        {"cuando": "Antes de cada pedido", "que": "Pedir al bot /pedido (o mirar Stock): sale lo que hay que pedir a cada proveedor, listo para copiar.",
+         "ok": None, "url": "/stock"},
         {"cuando": "Lunes", "que": "Subir los dos reportes de FUDO (Ventas y Productos), desde el día 1 del mes hasta el domingo.",
          "ok": bool(uv and up and uv >= domingo.isoformat() and up >= domingo.isoformat()),
          "estado": f"cargado hasta el {uv}" if uv else "nada cargado", "url": "/cargar"},

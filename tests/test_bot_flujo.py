@@ -137,3 +137,18 @@ def test_conversacion_completa(b, monkeypatch):
     # 9. todo lo guardado aparece en el registro del bot
     estados = [r[0] for r in con.execute("SELECT estado FROM captura ORDER BY id")]
     assert "deshecho" in estados and estados.count("guardado") >= 5
+
+
+def test_bot_vitrina_y_pedido(b):
+    con, tg, enviar, tocar, resp = b
+    enviar(archivo=_stock_xlsx([("Brownies", 10, 4), ("Cheesecake berries", 6, 4)]), nombre="stock.xlsx")
+    t = enviar("saqué 3 brownies y 2 cheesecake berries")
+    assert "Anoté lo que salió a vitrina" in t and "• 3 Brownies: en vitrina hasta el" in t
+    assert "Brownies" in enviar("/vitrina") and "le quedan 4 días" in tg.ultimo
+    assert "Anoté lo que hay en vitrina" in enviar("en vitrina quedan 1 brownies")
+    assert "borré lo último" in enviar("/deshacer")
+    assert con.execute("SELECT COUNT(*) FROM vitrina").fetchone()[0] == 2
+    t = enviar("/pedido")
+    assert "📋" in t and "vende 0,4/día" in t
+    assert "No encontré un proveedor" in enviar("/pedido zzz")
+    assert "📋" in enviar("¿Qué pedimos?")

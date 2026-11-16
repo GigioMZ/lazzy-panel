@@ -166,7 +166,16 @@ def _m8(con):
     con.execute("ALTER TABLE compra ADD COLUMN creado TEXT")
 
 
-MIGRACIONES = [_m1, _m2, _m3, _m4, _m5, _m6, _m7, _m8]
+def _m9(con):
+    """Vitrina (lo que se saca del congelador, con su vida útil) y ajustes del pedido sugerido por producto."""
+    con.executescript("""
+    CREATE TABLE IF NOT EXISTS vitrina(id INTEGER PRIMARY KEY, fecha TEXT NOT NULL, producto TEXT NOT NULL, cantidad REAL NOT NULL,
+      tipo TEXT NOT NULL DEFAULT 'saca', origen TEXT, creado TEXT);
+    CREATE TABLE IF NOT EXISTS producto_stock(producto TEXT PRIMARY KEY, vida INTEGER, objetivo REAL, proveedor TEXT);
+    """)
+
+
+MIGRACIONES = [_m1, _m2, _m3, _m4, _m5, _m6, _m7, _m8, _m9]
 
 
 def migrar(con):

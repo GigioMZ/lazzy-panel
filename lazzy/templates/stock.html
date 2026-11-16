@@ -17,6 +17,32 @@
 {% for f in filas %}<tr class="{{'falta' if f.bajo}}"><td class="l"><a href="/receta?p={{f.producto|urlencode}}">{{f.producto}}</a></td><td>{{f.conteo|round|int}}</td><td>{{('+' ~ (f.entradas|round|int)) if f.entradas else '—'}}</td><td>{{('-' ~ (f.ventas|round|int)) if f.ventas else '—'}}</td>
 <td><b>{{f.esperado|round|int}}</b>{% if f.bajo %} <span class="delta baja">bajo</span>{% endif %}</td><td>{{f.minimo|round|int if f.minimo is not none else '—'}}</td><td>{{f.costo|clp if f.costo is not none else 'sin costo'}}</td><td>{{f.valor|clp}}</td></tr>{% endfor %}</table></div>
 <p class="nota">Los combos también descuentan (un Cappu + Brownie resta un Brownie). Un combo genérico como «Cappu + Sandwich» no se puede descontar de un sándwich en particular.</p></section>
+<section class="bloque"><h2>En vitrina {{tip('vitrina')}}</h2>
+{% if vitrina %}<div class="tabla" style="max-width:760px"><table><tr><th class="l">Producto</th><th>Sacados</th><th>El</th><th>Quedarían</th><th class="l">Último día</th></tr>
+{% for x in vitrina %}<tr class="{{'falta' if x.dias <= 0}}"><td class="l">{{x.producto}}</td><td>{{x.sacados|round|int}}</td><td>{{x.fecha[8:10]}}-{{x.fecha[5:7]}}</td><td>{{'~' if x.estimado}}{{x.quedan|round|int}}</td>
+<td class="l">{{x.ultimo_dia[8:10]}}-{{x.ultimo_dia[5:7]}}{% if x.dias == 0 %} <span class="delta baja">hoy</span>{% elif x.dias == 1 %} <span class="delta baja">mañana</span>{% endif %}</td></tr>{% endfor %}</table></div>
+<p class="nota">~ estimado: las ventas que todavía no se suben desde FUDO se calculan con el ritmo normal de cada producto.</p>
+{% else %}<p class="sub">Cuando saquen algo del congelador, escríbanle al bot «saqué 8 cheesecake berries, 4 brownies». Lo congelado no vence: los días se cuentan desde que sale a vitrina.</p>{% endif %}</section>
+
+<section class="bloque"><h2>Pedido sugerido {{tip('pedido')}}</h2>
+<p class="sub">Para llegar al próximo pedido con stock: lo que se vende al día × días hasta el próximo pedido, más el mínimo de FUDO, menos lo que hay. En el bot: /pedido.</p>
+{% for g in pedidos %}<div class="panel" style="margin-bottom:12px"><h3>{{g.nombre}} <span class="nota">pedido cada {{g.dias}} días</span></h3>
+<div class="tabla"><table><tr><th class="l">Producto</th><th>Vende al día</th><th>Hay hoy</th><th>Objetivo</th><th>Pedir</th></tr>
+{% for i in g['items'] %}<tr><td class="l">{{i.producto}}{% if g.rut and not i.seguro %} <span class="nota">proveedor probable</span>{% endif %}</td><td>{{i.ritmo|string|replace('.', ',')}}</td><td>~{{i.hoy|round|int}}</td><td>{{i.objetivo|round|int}}{% if i.fijo %} <span class="nota">fijo</span>{% endif %}</td>
+<td><b>{{i.pedir}}</b>{% if i.packs %} <span class="nota">{{i.packs}} × {{i.divisor|round|int}}</span>{% endif %}</td></tr>{% endfor %}</table></div>
+{% if g.total %}<details><summary>Mensaje para el proveedor</summary><pre style="white-space:pre-wrap">{{mensaje_pedido(g)}}</pre></details>{% endif %}</div>{% endfor %}
+{% if not pedidos %}<p class="sub">Aparece cuando haya stock cargado y ventas de las últimas 4 semanas.</p>{% endif %}</section>
+
+<form class="bloque" method="post"><input type="hidden" name="csrf" value="{{csrf}}"><input type="hidden" name="accion" value="ajustes">
+<h2>Vitrina y pedidos: ajustes</h2>
+<p class="sub">Días en vitrina: cuánto dura cada producto desde que sale del congelador (si no se completa, 4). Objetivo fijo: para pedir siempre hasta esa cantidad, en vez de calcularla. Proveedor: para los que no tienen factura vinculada.</p>
+<div class="tabla"><table><tr><th class="l">Producto</th><th>Días en vitrina</th><th>Objetivo fijo</th><th class="l">Proveedor</th></tr>
+{% for a in ajuste %}<tr><td class="l">{{a.producto}}</td><td><input class="n" name="vida:{{a.producto}}" value="{{a.vida}}" inputmode="numeric" style="width:60px" aria-label="Días en vitrina de {{a.producto}}"></td>
+<td><input class="n" name="obj:{{a.producto}}" value="{{a.objetivo|round|int if a.objetivo is not none else ''}}" inputmode="decimal" style="width:70px" placeholder="auto" aria-label="Objetivo fijo de {{a.producto}}"></td>
+<td class="l"><select name="prov:{{a.producto}}" aria-label="Proveedor de {{a.producto}}"><option value="">(según factura)</option>{% for r, n in provs %}<option value="{{r}}" {{'selected' if r == a.proveedor}}>{{n}}</option>{% endfor %}</select></td></tr>{% endfor %}</table></div>
+{% if dias_prov %}<p class="fila" style="flex-wrap:wrap;gap:12px">{% for r, n, d in dias_prov %}<label>{{n}}: pedido cada <input class="n" name="dias:{{r}}" value="{{d}}" inputmode="numeric" style="width:50px"> días</label>{% endfor %}</p>{% endif %}
+<button class="btn">Guardar ajustes</button></form>
+
 <section class="bloque"><h2>Llegadas sin factura</h2>
 <p class="sub">Para lo que llega sin una factura propia, como los sándwiches que se traen hechos. Por el bot: «llegaron 10 ciabatta jamón queso y 6 salame».</p>
 <form class="fila" method="post"><input type="hidden" name="csrf" value="{{csrf}}"><input type="hidden" name="accion" value="llegada">
@@ -35,6 +61,8 @@
 {% else %}<p class="sub">Aparecen desde el segundo stock que suban: ahí se compara lo esperado con lo contado.</p>{% endif %}</section>
 {% endif %}
 <section class="bloque"><h2>Cómo mantenerlo</h2><ul class="det"><li>Cuando llega un pedido: manden la factura al bot. Si sus productos están vinculados, el stock sube solo.</li>
-<li>Las ventas se descuentan con el reporte de Productos de FUDO de cada lunes.</li>
+<li>Las ventas se descuentan con el reporte de Productos de FUDO de cada lunes. Mientras, la vitrina y el pedido sugerido estiman esos días con el ritmo normal.</li>
+<li>Cuando saquen algo del congelador: al bot, «saqué 8 cheesecake berries, 4 brownies». El último día de cada tanda, el bot avisa lo que quedaría con una idea para venderlo.</li>
+<li>Antes de pedir: /pedido en el bot, o la tabla de arriba.</li>
 <li>Cuando ajusten el stock en FUDO (merma, conteo de vitrina) y al cierre de cada mes: exporten el stock y súbanlo. El panel compara, registra la merma y sigue desde lo contado.</li></ul></section>
 {% endblock %}
