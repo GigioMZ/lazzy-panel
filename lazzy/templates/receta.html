@@ -1,9 +1,15 @@
 {% extends "base.html" %}{% from "_m.html" import th %}{% block title %}{{producto}}{% endblock %}{% block main %}
-<p><a href="/productos">‹ Todos los productos</a></p>
+<div class="fila ficha-nav"><a href="/productos">‹ Todos los productos</a>
+<form class="fila" action="/receta" method="get"><input name="p" list="lista-p" placeholder="Buscar otro producto" aria-label="Buscar producto" required><button class="btn sec mini">Abrir</button></form>
+<datalist id="lista-p">{% for t in todos %}<option value="{{t}}">{% endfor %}</datalist></div>
 <div class="cab"><h1>{{producto}}</h1></div>
+{% if not en_fudo %}<p class="aviso">Este producto se creó en el panel y todavía no aparece en las ventas de FUDO. Créenlo en FUDO con el mismo nombre («{{producto}}») y desde el primer reporte se medirá solo en Seguimiento.</p>{% endif %}
 {% set deja = (precio - costo) if precio and costo is not none else none %}
 <div class="kpis">
-<div class="kpi"><div class="t">Precio de carta {{ tip('precio_carta') }}</div><div class="n">{{precio_bruto|clp}}</div><div class="d">{% if precio %}{{precio|clp}} sin IVA, {{vendidos|num}} vendidos en 90 días{% else %}sin ventas en los últimos 90 días{% endif %}</div></div>
+<div class="kpi"><div class="t">Precio de carta {{ tip('precio_carta') }}</div><div class="n">{{precio_bruto|clp}}</div>
+<form class="fila precio-f" method="post" action="/producto"><input type="hidden" name="csrf" value="{{csrf}}"><input type="hidden" name="producto" value="{{producto}}">
+<input class="n" name="precio" inputmode="numeric" value="{{manual.precio if manual and manual.precio else ''}}" placeholder="{{precio_fudo or 'con IVA'}}" aria-label="Precio de carta con IVA"><button class="btn sec mini">Cambiar</button></form>
+{% if manual and manual.precio and precio_fudo and manual.precio != precio_fudo %}<div class="d aviso-mini">En FUDO se está cobrando {{precio_fudo|clp}}: cámbienlo allá para que coincida.</div>{% endif %}<div class="d">{% if precio %}{{precio|clp}} sin IVA, {{vendidos|num}} vendidos en 90 días{% else %}sin ventas en los últimos 90 días{% endif %}</div></div>
 <div class="kpi"><div class="t">Te cuesta {{ tip('costo_unidad') }}</div><div class="n">{{costo|clp}}</div><div class="d">{{ 'calculado con la receta' if lineas else ('costo puesto a mano' if fijo else 'todavía sin costo') }}</div></div>
 <div class="kpi"><div class="t">Te deja {{ tip('deja_unidad') }}</div><div class="n">{{deja|clp}}</div><div class="d">por cada unidad vendida</div></div>
 <div class="kpi"><div class="t">Margen {{ tip('margen') }}</div><div class="n">{{ (100*(1-costo/precio))|pct(0) if deja is not none else '—' }}</div><div class="d">{% if deja is not none %}{% set m = 100*(1-costo/precio) %}<span class="st {{ 'ok' if m>=60 else 'warn' if m>=35 else 'bad' }}">{{ 'Bueno' if m>=60 else 'Regular' if m>=35 else 'Bajo' }}</span>{% endif %}</div></div>
@@ -24,7 +30,13 @@
 <form class="fila" method="post" style="margin-top:14px"><input type="hidden" name="csrf" value="{{csrf}}"><input type="hidden" name="producto" value="{{producto}}">
 <label>Agregar insumo <select name="insumo_id">{% for i in insumos %}<option value="{{i.id}}">{{i.nombre}} (en {{i.unidad}})</option>{% endfor %}</select></label>
 <label>cantidad <input class="n" name="cantidad" inputmode="decimal" required></label><button class="btn">Agregar a la receta</button></form>
-<p class="nota">¿No está el insumo en la lista? Créalo primero en <a href="/insumos">Insumos y precios</a>.</p></section>
+<details class="panel anotar" style="margin-top:14px"><summary><b>Agregar un insumo nuevo</b> <span class="nota">si no está en la lista (por ejemplo, el queso o el jamón de una factura)</span></summary>
+<form method="post"><input type="hidden" name="csrf" value="{{csrf}}"><input type="hidden" name="producto" value="{{producto}}"><input type="hidden" name="accion" value="nuevo_insumo">
+<div class="campos cuatro"><label class="campo"><span>Nombre</span><input name="nombre" required placeholder="Queso gauda laminado"></label>
+<label class="campo"><span>Formato que compras</span><span class="fila"><input class="n" name="formato" required inputmode="decimal" placeholder="400"><select name="unidad"><option>g</option><option>ml</option><option>un</option></select></span></label>
+<label class="campo"><span>Precio del formato, sin IVA</span><input class="n" name="precio" required inputmode="numeric" placeholder="2353"></label>
+<label class="campo"><span>Cuánto lleva este producto</span><input class="n" name="cantidad" required inputmode="decimal" placeholder="40"></label></div>
+<p><button class="btn">Crear y agregar a la receta</button> <span class="nota">Para que su precio se actualice solo, vincúlalo después a la línea de la factura en la ficha del proveedor.</span></p></form></details></section>
 
 {% if not lineas %}<section class="bloque"><h2>Costo fijo</h2><p class="sub">Para productos que compras hechos: lo que te cobra el proveedor por unidad, sin IVA.</p>
 <form class="fila" method="post" action="/productos/costo"><input type="hidden" name="csrf" value="{{csrf}}"><input type="hidden" name="producto" value="{{producto}}"><input type="hidden" name="volver" value="/receta?p={{producto|urlencode}}">

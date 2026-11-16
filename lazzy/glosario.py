@@ -63,6 +63,12 @@ GLOSARIO = {
     "simulador": ("Simulador", "Calcula cómo quedaría la ganancia de un mes normal si cambian precios, costos, sueldos o días abiertos. Usa el promedio de los últimos 3 meses cerrados y la sensibilidad al precio que se midió en sus propios cambios de precio (Seguimiento)."),
     "gasto_insumo": ("Gasto al mes", "Cuánto se gasta al mes en este insumo según las recetas y lo que se vendió en los últimos 3 meses. La columna siguiente es cuánto menos ganarían al mes si su precio sube 10%."),
     "ofertas": ("Ofertas y combos", "Para cada combo: cuánto se vende, qué descuento da contra comprar las cosas por separado y cuánto deja. Las sugerencias usan solo productos con costo cargado y un precio de combo con 10% de descuento, terminado en 90."),
+    "apartar": ("Plata para apartar", "Lo que se estima que habrá que pagar en el F29 de este mes (IVA de las ventas menos IVA de las compras, más PPM), dividido por las semanas que faltan para pagarlo. Apartarlo cada semana evita que el pago del día 20 pille sin caja."),
+    "f29_real": ("F29 presentados", "Los formularios 29 que ya se pagaron, para comparar con lo que estimó el panel. Se guardan mandando el PDF al bot o anotándolos aquí. De cada uno sale la tasa real de PPM."),
+    "iva_perdido": ("IVA perdido", "Cuando se compra con boleta o la cuenta no está a nombre de la empresa, el IVA de esa compra no se puede descontar. Pedir factura a nombre de Lazzy (RUT 77.618.245-1) lo recupera."),
+    "cuentas_luz_agua": ("Cuentas de luz y agua", "Se reconocen solas por el nombre (Enel, Aguas Andinas, «luz», «agua») cuando llegan por el bot o como factura. Mientras no llega la cuenta del mes, el estado de resultados usa el monto estimado de Gastos fijos."),
+    "turnos": ("Turnos", "Quién atiende cada día y en qué horario. La venta de cada hora se asigna a quien está de turno; si una hora se comparte (16:30), se reparte en proporción. Sirve para ver qué turnos rinden más y dónde sobra o falta gente."),
+    "calendario": ("Calendario de datos", "Muestra qué días y meses ya tienen sus datos en el panel. Con todo en verde, los números son completos; un día en rojo significa que falta subir el reporte de FUDO que lo incluye."),
 }
 
 # Nombres legibles de las categorías, agrupadas como aparecen en los selectores.

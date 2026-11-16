@@ -3,6 +3,10 @@
 <p class="sub">El panel se alimenta de tres archivos. Sube los que tengas, todos juntos si quieres: reconoce solo cuál es cuál, y volver a subir uno no duplica nada.</p>
 {% for k,m in msgs %}<p class="aviso {{k}}">{{m}}</p>{% endfor %}
 <form class="fila bloque" method="post" enctype="multipart/form-data" style="display:flex"><input type="hidden" name="csrf" value="{{csrf}}"><input type="file" name="archivos" multiple required accept=".xlsx,.csv,.toml,.pdf,.zip" aria-label="Elegir archivos"> <button class="btn">Subir archivos</button></form>
+{% if pendiente %}<section class="bloque previa"><h2>Revisa antes de guardar</h2>
+{% for x in pendiente.previas %}<div class="panel"><b>{{x.titulo}}</b> <span class="nota">{{x.nombre}}</span><ul>{% for l in x.lineas %}<li>{{l}}</li>{% endfor %}</ul></div>{% endfor %}
+<form class="fila" method="post" action="/cargar/confirmar"><input type="hidden" name="csrf" value="{{csrf}}"><input type="hidden" name="token" value="{{pendiente.token}}">
+<button class="btn" name="accion" value="guardar">Guardar en el panel</button> <button class="btn sec" name="accion" value="cancelar">Cancelar</button></form></section>{% endif %}
 {% for t in trabajos %}<div class="aviso {{'ok' if t.estado == 'listo' else ''}} trabajo"><b>{{'Facturas leídas' if t.estado == 'listo' else 'Leyendo facturas…'}}</b> {{t.hechos}} de {{t.total}}
 {% if t.estado != 'listo' %}<span class="barra"><span style="width:{{(100 * t.hechos / (t.total or 1))|round}}%"></span></span>{% endif %}<br><span class="nota">{{t.mensaje}}</span></div>{% endfor %}
 <div class="tabla bloque"><table><tr><th>Archivo</th><th class="l">Cómo se descarga</th><th class="l">Cada cuánto</th><th class="l">Cargado en el panel</th></tr>
@@ -10,4 +14,13 @@
 <tr><td>Productos de FUDO</td><td class="l w">En FUDO: Reportes, Productos, las mismas fechas, exporta a Excel.</td><td class="l">Una vez por semana</td><td class="l">{% if estado.productos[0] %}Del {{estado.productos[0]}} al {{estado.productos[1]}}{% else %}Nada todavía{% endif %}</td></tr>
 <tr><td>Compras del SII</td><td class="l w">En sii.cl: Servicios online, Factura electrónica, Registro de Compras y Ventas. Elige el mes, pestaña Compras, botón Descargar detalles.</td><td class="l">Una vez al mes, los primeros días</td><td class="l w">{% if estado.compras %}{{estado.compras|map('mes')|join(', ')}}{% else %}Nada todavía{% endif %}</td></tr>
 <tr><td>Facturas antiguas {{tip('carga_facturas')}}</td><td class="l w">PDF sueltos o un ZIP (por ejemplo, el chat de WhatsApp exportado con sus archivos). Los comprobantes de transferencia se ignoran solos.</td><td class="l">Una sola vez; las nuevas llegan por el bot</td><td class="l">{{estado.lineas}} productos de facturas guardados</td></tr></table></div>
+<section class="bloque"><h2>Calendario de datos {{tip('calendario')}}</h2>
+<p class="sub">Cada cuadrito es un día de las últimas 8 semanas. Si hay alguno en rojo, falta subir FUDO de ese día.</p>
+<div class="cal"><div class="cal-h">{% for d in ['Lu','Ma','Mi','Ju','Vi','Sá','Do'] %}<span>{{d}}</span>{% endfor %}</div>
+{% for s in cal.semanas %}<div class="cal-s">{% for d in s %}<span class="cal-d {{d.estado}}" title="{{d.fecha.day}}/{{d.fecha.month}}: {{ {'ok':'ventas y productos','medio':('solo ventas' if d.v else 'solo productos'),'falta':'falta FUDO','cerrado':'cerrado','futuro':''}[d.estado] }}">{{d.fecha.day}}</span>{% endfor %}</div>{% endfor %}</div>
+<p class="cal-ley"><span class="cal-d ok"></span> ventas y productos <span class="cal-d medio"></span> falta uno de los dos <span class="cal-d falta"></span> falta FUDO <span class="cal-d cerrado"></span> cerrado</p>
+<div class="tabla" style="max-width:760px"><table><tr><th class="l">Mes</th><th>Compras SII</th><th>Luz</th><th>Agua</th><th>Transbank</th><th>F29</th></tr>
+{% for m in cal.meses|reverse %}<tr><td class="l">{{m.periodo|mes}}{% if not m.cerrado %} <span class="nota">en curso</span>{% endif %}</td>
+{% for k in ('sii','luz','agua','transbank','f29') %}<td>{% if m[k] %}<span class="ck-ok" aria-label="listo">✓</span>{% elif m.cerrado or k in ('luz','agua') %}<span class="ck-no" aria-label="falta">falta</span>{% else %}<span class="nota">—</span>{% endif %}</td>{% endfor %}</tr>{% endfor %}</table></div>
+<p class="nota">El SII, Transbank y el F29 de un mes llegan los primeros días del mes siguiente.</p></section>
 <p class="nota">Para las fechas de FUDO conviene exportar siempre desde el primer día del mes: así se corrigen solas las ventas que se hayan anulado o modificado.</p>{% endblock %}

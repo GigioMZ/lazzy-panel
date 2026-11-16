@@ -1,7 +1,26 @@
 {% extends "base.html" %}{% from "_m.html" import th %}{% block title %}IVA{% endblock %}{% block main %}
 <div class="cab"><h1>IVA de cada mes</h1></div>
 <p class="sub">Cuánto IVA hay que pagarle al SII cada mes: el que cobraste en tus ventas menos el que ya pagaste en tus compras con factura. Sirve para apartar esa plata y que el pago no te pille de sorpresa.</p>
+{% if msg %}<p class="aviso ok">{{msg}}</p>{% endif %}
+<section class="apartar bloque"><div><div class="t">Aparta esta semana {{tip('apartar')}}</div><div class="n">{{ap.por_semana|clp}}</div>
+<p>El F29 de {{ap.periodo|mesl}} se paga hasta el <b>{{ap.pago.day}}/{{ap.pago.month}}</b> (faltan {{ap.dias}} días). Al cierre del mes serían unos <b>{{ap.cierre|clp}}</b>: el IVA de las ventas (van {{ap.debito_hoy|clp}}) menos el de las compras, que se completa con las facturas del mes.</p></div>
+<dl class="ind"><div><dt>IVA de las ventas, al cierre</dt><dd>{{ap.debito|clp}}</dd></div><div><dt>IVA de las compras (promedio)</dt><dd>-{{ap.credito|clp}}</dd></div><div><dt>PPM</dt><dd>{{ap.ppm|clp}}</dd></div></dl></section>
 <p class="aviso">Es una estimación hecha con las ventas de FUDO y las compras del SII. El monto oficial es el del formulario 29 que presenta la contadora. {{ tip('f29') }}</p>
 <div class="tabla bloque"><table><tr><th>Mes</th>{{ th('IVA que cobraste','iva_cobrado') }}{{ th('IVA de tus compras','iva_compras') }}{{ th('IVA a pagar','iva_pagar') }}{{ th('PPM','ppm') }}<th>Total a pagar al SII</th></tr>
 {% for r in rows %}<tr><td>{{r.periodo|mesl|capitalize}}</td><td>{{r.debito|clp}}</td>{% if r.tiene_compras %}<td>{{r.credito|clp}}</td><td>{{r.iva_a_pagar|clp}}</td><td>{{r.ppm|clp}}</td><td><b>{{r.f29_estimado|clp}}</b></td>{% else %}<td colspan="4" class="l">Falta el archivo de compras del SII de este mes</td>{% endif %}</tr>{% endfor %}</table></div>
+<section class="bloque"><h2>F29 presentados {{tip('f29_real')}}</h2>
+{% if cuadre %}<div class="tabla"><table><tr><th>Mes</th><th>F29 real</th><th>Estimado del panel</th><th>Diferencia</th><th>IVA ventas</th><th>IVA compras</th><th>PPM</th><th>Tasa PPM</th></tr>
+{% for c in cuadre %}<tr><td>{{c.periodo|mesl|capitalize}}</td><td><b>{{c.real.total|clp}}</b></td><td>{{c.est.f29_estimado|clp}}</td><td><span class="delta {{'sube' if c.dif|abs < 20000 else 'baja'}}">{{'+' if c.dif >= 0 else '-'}}{{c.dif|abs|clp}}</span></td>
+<td>{{c.real.debito|clp if c.real.debito}}</td><td>{{c.real.credito|clp if c.real.credito}}</td><td>{{c.real.ppm|clp if c.real.ppm}}</td>
+<td>{% if c.tasa_ppm %}{{c.tasa_ppm|string|replace('.',',')}}%{% if (c.tasa_ppm - ppm)|abs > 0.01 %}<form method="post" action="/f29" class="fila"><input type="hidden" name="csrf" value="{{csrf}}"><input type="hidden" name="accion" value="tasa"><input type="hidden" name="tasa" value="{{c.tasa_ppm}}"><button class="btn sec mini">Usar</button></form>{% endif %}{% endif %}</td></tr>{% endfor %}</table></div>
+<p class="nota">Una diferencia grande suele ser por facturas que llegaron tarde o compras sin factura. El F29 real manda.</p>
+{% else %}<p class="sub">Todavía no hay ninguno. Mándale al bot el PDF del F29 (se descarga del SII) y lo guardo solo, o anótalo aquí.</p>{% endif %}
+<details class="panel anotar"><summary><b>Anotar un F29 a mano</b></summary><form method="post" action="/f29"><input type="hidden" name="csrf" value="{{csrf}}">
+<div class="campos tres"><label class="campo"><span>Mes</span><input type="month" name="periodo" required></label><label class="campo"><span>Total pagado (código 91)</span><input class="n" name="total" required inputmode="numeric"></label>
+<label class="campo"><span>PPM (código 62)</span><input class="n" name="ppm" inputmode="numeric"></label><label class="campo"><span>IVA ventas (538)</span><input class="n" name="debito" inputmode="numeric"></label>
+<label class="campo"><span>IVA compras (537)</span><input class="n" name="credito" inputmode="numeric"></label><label class="campo"><span>Ventas sin IVA (563)</span><input class="n" name="ventas_neto" inputmode="numeric"></label></div>
+<button class="btn">Guardar F29</button></form></details></section>
+{% if perdido.total %}<section class="bloque"><h2>IVA que se pierde en compras sin factura {{tip('iva_perdido')}}</h2>
+<p class="sub">En {{perdido.anio}} pagaron {{perdido.total|clp}} en cosas sin factura. Si hubieran tenido factura a nombre de la empresa, habrían descontado unos <b>{{perdido.iva|clp}}</b> de IVA.</p>
+<div class="tabla" style="max-width:640px"><table><tr><th class="l">Qué</th><th>Veces</th><th>Pagado</th><th>IVA perdido</th></tr>{% for x in perdido.filas %}<tr><td class="l">{{x.descripcion}}</td><td>{{x.n}}</td><td>{{x.monto|clp}}</td><td>{{(x.monto*0.19/1.19)|round|int|clp}}</td></tr>{% endfor %}</table></div></section>{% endif %}
 <p class="nota">{% if ppm %}PPM calculado con una tasa de {{'%g'|format(ppm)|replace('.',',')}}%.{% else %}El PPM está en $0 porque todavía no pones la tasa.{% endif %} <a href="/costos-fijos">Cambiar tasa de PPM</a></p>{% endblock %}

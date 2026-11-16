@@ -25,6 +25,7 @@ RUT con guion y dígito verificador, sin puntos (ej: "77.323.879-0" -> "77323879
 Fechas en formato AAAA-MM-DD.
 Categorías posibles (usa la clave):
 {CATS_TEXTO}
+En el detalle de productos, algunas facturas usan coma decimal: "2.352,941" es 2352.941 y "1,3" es 1.3.
 Pistas: Transbank = comision_tarjetas; Enel/CGE (luz), Aguas Andinas (agua) = servicios; Entel/Movistar = telecom;
 pasteles, tortas, galletas, brownies = pasteleria; vasos, tapas, bombillas = envases."""
 
@@ -41,7 +42,9 @@ HERR_DOC = {
         "neto": {"type": "integer"}, "exento": {"type": "integer"}, "iva": {"type": "integer"},
         "total": {"type": "integer", "description": "Total a pagar"},
         "lineas": {"type": "array", "items": {"type": "object", "properties": {
-            "descripcion": {"type": "string"}, "cantidad": {"type": "number"},
+            "descripcion": {"type": "string"},
+            "cantidad": {"type": "number", "description": "Unidades reales. Si la columna dice 1 pero la descripción empieza "
+                         "con el número de unidades (ej: '12 PIE DE LIMON'), usa ese número"},
             "precio_unitario": {"type": "number", "description": "Tal como aparece en el documento"},
             "total_linea": {"type": "number", "description": "Tal como aparece en el documento"}},
             "required": ["descripcion"]}},
@@ -159,15 +162,49 @@ def normalizar_doc(d):
         out["iva"] = out["total"] - out["neto"]
     if out["neto"] and abs(out["neto"] + out["iva"] + out["exento"] - out["total"]) > 3:
         out["avisos"].append("Los montos no cuadran (neto + IVA ≠ total). Revisa antes de guardar.")
-    lineas = [x for x in d.get("lineas") or [] if x.get("descripcion")]
+    lineas = [dict(x) for x in d.get("lineas") or [] if x.get("descripcion")]
     suma = sum(float(x.get("total_linea") or 0) for x in lineas)
+    base = out["neto"] + out["exento"]
+    if suma and base and abs(suma / 1000 - base) <= base * 0.03:   # «2.352,941» leído como 2352941: la coma era decimal
+        for x in lineas:
+            for k in ("precio_unitario", "total_linea"):
+                if x.get(k):
+                    x[k] = float(x[k]) / 1000
+        suma /= 1000
     con_iva = bool(suma) and out["neto"] and abs(suma - out["total"]) < abs(suma - out["neto"] - out["exento"])
     out["precios_con_iva"] = bool(con_iva)
     f = 1 / (1 + IVA) if con_iva else 1
-    out["lineas"] = [{"descripcion": x["descripcion"].strip()[:120], "cantidad": float(x.get("cantidad") or 0) or None,
-                      "precio_neto": round(float(x.get("precio_unitario") or 0) * f, 1) or None,
-                      "total_neto": round(float(x.get("total_linea") or 0) * f) or None} for x in lineas]
+    out["lineas"] = []
+    for x in lineas:
+        ln = {"descripcion": x["descripcion"].strip()[:120], "cantidad": float(x.get("cantidad") or 0) or None,
+              "precio_neto": round(float(x.get("precio_unitario") or 0) * f, 1) or None,
+              "total_neto": round(float(x.get("total_linea") or 0) * f) or None}
+        ln2, cambio = cantidad_en_descripcion(ln)
+        if cambio:
+            out["avisos"].append(f"Leí «{ln['descripcion']}» como {ln2['cantidad']} unidades de ${round(ln2['precio_neto']):,} sin IVA c/u.".replace(",", "."))
+        out["lineas"].append(ln2)
     return out
+
+
+UNIDADES = r"(?:k|kg|kgs|kilo|kilos|g|gr|grs|gramos|l|lt|lts|litro|litros|ml|cc|cm|mm|oz|%)\b"
+_CANT = re.compile(r"^\s*(\d{1,3})\s*(?:x|un\.?|uds?\.?|unidades|porciones)?\s+(?!" + UNIDADES + r")(?=[^\W\d_])(.+)$", re.I)
+
+
+def cantidad_en_descripcion(ln):
+    """«12 PIE DE LIMON» con cantidad 1 y $25.210 son 12 unidades de $2.101. Devuelve la línea corregida y si cambió.
+    No toca «2 LITROS LECHE» ni «500G SALAME» (el número es el formato, no la cantidad)."""
+    m = _CANT.match(ln.get("descripcion") or "")
+    if m and ln.get("cantidad") == int(m.group(1)) and int(m.group(1)) >= 2:   # ya venía bien: solo limpia el nombre
+        return dict(ln, descripcion=m.group(2).strip()), False
+    if not m or (ln.get("cantidad") or 1) != 1:
+        return ln, False
+    n = int(m.group(1))
+    if not 2 <= n <= 200:
+        return ln, False
+    total = ln.get("total_neto") or ln.get("precio_neto")
+    if not total:
+        return ln, False
+    return dict(ln, descripcion=m.group(2).strip(), cantidad=n, precio_neto=round(total / n, 1), total_neto=round(total)), True
 
 
 def es_factura(d):

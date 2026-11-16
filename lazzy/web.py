@@ -1,8 +1,8 @@
 """Panel web. Ejecutar: uvicorn lazzy.web:app  (variables: LAZZY_DB, LAZZY_SECRET, LAZZY_HTTPS=1)."""
 import json
+from urllib.parse import quote
 import os
 import secrets
-import tempfile
 import time
 try:
     import tomllib
@@ -11,7 +11,6 @@ except ModuleNotFoundError:  # Python < 3.11
 from datetime import date, timedelta
 from pathlib import Path
 
-import openpyxl
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -26,6 +25,9 @@ from . import insights as I
 from . import tablero as TB
 from . import estado as E
 from . import historico as H
+from . import carga as CG
+from . import gastos as GS
+from . import iva as IVA
 from . import metas as MT
 from . import ofertas as O
 from . import simulador as SIM
@@ -34,8 +36,6 @@ from . import seguimiento as S
 from .auth import check_password
 from .db import connect
 from .glosario import CAT_NOMBRE, CATEGORIAS_UI, GLOSARIO, GRUPO_NOMBRE
-from .importers.fudo_report import import_fudo_productos, import_fudo_report
-from .importers.rcv import import_rcv_compras
 
 DB_PATH = os.environ.get("LAZZY_DB", "data/lazzy.db")
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
@@ -341,7 +341,11 @@ def productos(request: Request):
     conteo["sin"] = sum(1 for d in r["productos"] if d["costo"] is None)
     S.asegurar(con)
     segs = {x[0] for x in con.execute("SELECT DISTINCT producto FROM evento WHERE estado='activo' AND producto IS NOT NULL")}
+    nuevos = [dict(x) for x in con.execute("SELECT * FROM producto_manual m WHERE NOT EXISTS "
+                                           "(SELECT 1 FROM venta_producto v WHERE v.producto=m.producto) ORDER BY creado DESC")]
+    cats_fudo = [x[0] for x in con.execute("SELECT DISTINCT categoria FROM venta_producto WHERE categoria IS NOT NULL ORDER BY 1")]
     return page(request, "productos.html", r=r, desde=desde, hasta=hasta, ps=ps, conteo=conteo, segs=segs,
+                todos=todos_productos(con), nuevos=nuevos, cats_fudo=cats_fudo,
                 of=O.resumen(con, F.load_cfg(con)),
                 grupo=request.query_params.get("grupo", ""),
                 chart=json.dumps({"puntos": puntos, "umbral": r["umbral"]}))
@@ -365,27 +369,69 @@ def receta(request: Request, p: str):
         "SELECT i.id, i.nombre, i.unidad, r.cantidad, r.cantidad*i.precio_formato/i.cantidad_formato costo "
         "FROM receta r JOIN insumo i ON i.id=r.insumo_id WHERE r.producto=? ORDER BY costo DESC", (p,))]
     fijo = con.execute("SELECT * FROM producto_costo WHERE producto=?", (p,)).fetchone()
-    venta = con.execute("SELECT SUM(bruto) b, SUM(cantidad) q FROM venta_producto WHERE producto=? AND fecha >= date('now','-90 day')", (p,)).fetchone()
+    ult = con.execute("SELECT MAX(fecha) FROM venta_producto WHERE producto=?", (p,)).fetchone()[0]
+    venta = con.execute("SELECT SUM(bruto) b, SUM(cantidad) q FROM venta_producto WHERE producto=? AND fecha >= date(?, '-28 day')",
+                        (p, ult or "2000-01-01")).fetchone()
+    manual = con.execute("SELECT * FROM producto_manual WHERE producto=?", (p,)).fetchone()
+    if not ult and not manual and not lineas and not fijo:
+        raise HTTPException(404, "Ese producto no existe. Créalo desde Productos.")
     iva = F.load_cfg(con)["empresa"]["iva"]
-    precio = round(venta["b"] / venta["q"] / (1 + iva)) if venta["q"] else None
+    fudo = round(venta["b"] / venta["q"]) if venta["q"] else None
+    precio_bruto = (manual["precio"] if manual and manual["precio"] else None) or fudo
+    precio = round(precio_bruto / (1 + iva)) if precio_bruto else None
     total = F.costo_receta(con, p)
     costo = total if total is not None else (fijo["costo"] if fijo else None)
+    vendidos = con.execute("SELECT SUM(cantidad) FROM venta_producto WHERE producto=? AND fecha >= date(?, '-89 day')",
+                           (p, ult or "2000-01-01")).fetchone()[0]
     return page(request, "receta.html", producto=p, lineas=lineas, total=total, fijo=fijo, costo=costo, iva=iva,
-                precio=precio, precio_bruto=round(venta["b"] / venta["q"]) if venta["q"] else None,
-                vendidos=round(venta["q"] or 0), insumos=[dict(r) for r in con.execute("SELECT * FROM insumo ORDER BY nombre")])
+                precio=precio, precio_bruto=precio_bruto, precio_fudo=fudo, manual=manual, en_fudo=bool(ult),
+                vendidos=round(vendidos or 0), todos=todos_productos(con), activo="/productos",
+                insumos=[dict(r) for r in con.execute("SELECT * FROM insumo ORDER BY nombre")])
+
+
+def todos_productos(con):
+    return [r[0] for r in con.execute("SELECT producto FROM (SELECT DISTINCT producto FROM venta_producto UNION "
+                                      "SELECT producto FROM producto_manual) WHERE producto <> '-' ORDER BY producto")]
+
+
+@app.post("/producto")
+async def producto_post(request: Request):
+    """Crear un producto (antes de que exista en FUDO) o cambiar su precio de carta en el panel."""
+    f = await form(request)
+    con = db()
+    nombre = " ".join(str(f.get("producto", "")).split())[:80]
+    if not nombre:
+        return RedirectResponse("/productos", 303)
+    precio = str(f.get("precio", "")).replace(".", "").replace("$", "").strip()
+    precio = int(precio) if precio.isdigit() else None
+    act = con.execute("SELECT * FROM producto_manual WHERE producto=?", (nombre,)).fetchone()
+    cat = str(f.get("categoria") or (act["categoria"] if act else "") or "").strip()[:60] or None
+    con.execute("INSERT OR REPLACE INTO producto_manual VALUES (?,?,?,?)",
+                (nombre, cat, precio, act["creado"] if act else date.today().isoformat()))
+    con.commit()
+    return RedirectResponse(f"/receta?p={quote(nombre)}", 303)
 
 
 @app.post("/receta")
 async def receta_post(request: Request):
     f = await form(request)
     con, prod = db(), str(f["producto"])
+    if f.get("accion") == "nuevo_insumo":         # crea el insumo y lo agrega a la receta en un paso
+        iid = con.execute("INSERT INTO insumo(nombre,unidad,cantidad_formato,precio_formato,actualizado) VALUES (?,?,?,?,?)",
+                          (str(f["nombre"]).strip()[:60], str(f["unidad"]).strip()[:10] or "un",
+                           float(str(f["formato"]).replace(",", ".")), int(str(f["precio"]).replace(".", "").replace("$", "")),
+                           date.today().isoformat())).lastrowid
+        F.registrar_insumo(con, iid)
+        con.execute("INSERT OR REPLACE INTO receta VALUES (?,?,?)", (prod, iid, float(str(f["cantidad"]).replace(",", "."))))
+        con.commit()
+        return RedirectResponse(f"/receta?p={quote(prod)}", 303)
     if f.get("accion") == "quitar":
         con.execute("DELETE FROM receta WHERE producto=? AND insumo_id=?", (prod, int(f["insumo_id"])))
     else:
         con.execute("INSERT OR REPLACE INTO receta VALUES (?,?,?)",
                     (prod, int(f["insumo_id"]), float(str(f["cantidad"]).replace(",", "."))))
     con.commit()
-    return RedirectResponse(f"/receta?p={prod}", 303)
+    return RedirectResponse(f"/receta?p={quote(prod)}", 303)
 
 
 @app.get("/insumos", response_class=HTMLResponse)
@@ -492,6 +538,11 @@ async def proveedor_vinculos(request: Request):
         except ValueError:
             div = 1.0
         tipo, _, destino = dest.partition(":")
+        if dest == "nuevo:insumo":
+            iid = PV.crear_insumo(con, rut, clave)
+            if not iid:
+                continue
+            tipo, destino = "insumo", str(iid)
         actual = con.execute("SELECT tipo, destino, divisor FROM vinculo WHERE rut=? AND clave=?", (rut, clave)).fetchone()
         if actual and (actual["tipo"], actual["destino"], actual["divisor"]) == (tipo, destino, div):
             continue
@@ -559,9 +610,54 @@ def costos_fijos(request: Request):
     user(request)
     con = db()
     cfg = F.load_cfg(con)
-    return page(request, "costos_fijos.html", rows=[dict(r) for r in con.execute("SELECT * FROM costo_fijo ORDER BY categoria, nombre")],
+    ps0 = F.periodos(con)
+    serv = [x for x in GS.servicios_mes(con, 8) if not ps0 or x["periodo"] >= ps0[0]]
+    tur = GS.analisis_turnos(con)
+    pagos = {r["clave"][5:]: int(float(r["valor"])) for r in con.execute("SELECT * FROM parametro WHERE clave LIKE 'pago_%'")}
+    for x in tur["personas"]:
+        x["pago"] = pagos.get(x["persona"])
+        if x["pago"] and x["horas_semana"]:
+            x["costo_hora"] = round(x["pago"] / (x["horas_semana"] * 4.33))
+            x["veces"] = round(x["por_hora"] / x["costo_hora"], 1) if x["costo_hora"] else None
+    horas = {d: GS.horas_por_turno(con, d) for d in range(6)}
+    return page(request, "costos_fijos.html", serv=serv, tur=tur, esp=GS.esperado(con), dias=GS.DIAS,
+                graf=json.dumps({"serv": serv, "horas": horas}), msg=request.session.pop("msg", None),
+                rows=[dict(r) for r in con.execute("SELECT * FROM costo_fijo ORDER BY categoria, nombre")],
                 ppm=cfg["empresa"]["ppm_tasa"] * 100, emp=cfg["empresa"],
                 calc=F.tasa_tarjetas(con, dict(cfg, empresa=dict(cfg["empresa"], comision_debito=None, comision_credito=None))))
+
+
+@app.post("/turnos")
+async def turnos_post(request: Request):
+    f = await form(request)
+    con = db()
+    acc = f.get("accion")
+    if acc == "borrar":
+        con.execute("DELETE FROM turno WHERE id=?", (int(f["id"]),))
+    elif acc == "agregar":
+        import re as _re
+        desde, hasta = str(f.get("desde", "")), str(f.get("hasta", ""))
+        if not (_re.fullmatch(r"\d{2}:\d{2}", desde) and _re.fullmatch(r"\d{2}:\d{2}", hasta)) or desde >= hasta:
+            request.session["msg"] = "Revisa las horas del turno (formato 09:00 y que termine después de empezar)."
+            return RedirectResponse("/costos-fijos#turnos", 303)
+        dias = [int(d) for d in f.getlist("dia") if str(d).isdigit() and 0 <= int(d) <= 6]
+        for d in dias:
+            con.execute("INSERT INTO turno(persona,dia,desde,hasta,en_resultado) VALUES (?,?,?,?,?)",
+                        (str(f["persona"]).strip()[:30], d, desde, hasta, 1 if f.get("en_resultado") else 0))
+    elif acc == "pago":
+        v = str(f.get("pago", "")).replace(".", "").replace("$", "").strip()
+        clave = "pago_" + str(f["persona"]).strip()[:30]
+        if v.isdigit():
+            con.execute("INSERT OR REPLACE INTO parametro VALUES (?,?)", (clave, v))
+        else:
+            con.execute("DELETE FROM parametro WHERE clave=?", (clave,))
+    elif acc == "esperado":
+        for k in ("luz", "agua"):
+            v = str(f.get(k, "")).replace(".", "").replace("$", "").strip()
+            if v.isdigit():
+                con.execute("INSERT OR REPLACE INTO parametro VALUES (?,?)", (f"esperado_{k}", v))
+    con.commit()
+    return RedirectResponse("/costos-fijos#" + ("cuentas" if acc == "esperado" else "turnos"), 303)
 
 
 @app.post("/costos-fijos")
@@ -599,7 +695,27 @@ def impuestos(request: Request):
     rows = [{"periodo": x, **F.iva_mes(con, x, cfg),
              "tiene_compras": bool(con.execute("SELECT 1 FROM compra WHERE periodo=? LIMIT 1", (x,)).fetchone())}
             for x in reversed(lista)]
-    return page(request, "impuestos.html", rows=rows, ppm=cfg["empresa"]["ppm_tasa"] * 100)
+    return page(request, "impuestos.html", rows=rows, ppm=cfg["empresa"]["ppm_tasa"] * 100, ap=IVA.apartar(con, cfg),
+                cuadre=IVA.cuadre(con, cfg), perdido=IVA.perdido(con), msg=request.session.pop("msg", None))
+
+
+@app.post("/f29")
+async def f29_post(request: Request):
+    f = await form(request)
+    con = db()
+    if f.get("accion") == "tasa":
+        con.execute("INSERT OR REPLACE INTO parametro VALUES ('ppm_tasa', ?)", (str(float(str(f["tasa"]).replace(",", ".")) / 100),))
+        con.commit()
+        request.session["msg"] = "Tasa de PPM actualizada."
+        return RedirectResponse("/impuestos", 303)
+    num = lambda k: int(str(f.get(k) or "0").replace(".", "").replace("$", "").strip() or 0)
+    try:
+        IVA.guardar_f29(con, {"periodo": str(f.get("periodo", "")), "debito": num("debito"), "credito": num("credito"),
+                              "ppm": num("ppm"), "total": num("total"), "ventas_neto": num("ventas_neto") or None})
+        request.session["msg"] = "F29 guardado."
+    except ValueError as e:
+        request.session["msg"] = str(e)
+    return RedirectResponse("/impuestos", 303)
 
 
 @app.get("/decisiones", response_class=HTMLResponse)
@@ -676,7 +792,9 @@ async def gasto_borrar(request: Request):
 @app.get("/ayuda", response_class=HTMLResponse)
 def ayuda(request: Request):
     user(request)
-    return page(request, "ayuda.html")
+    con = db()
+    from . import ayuda as AY
+    return page(request, "ayuda.html", rutina=AY.rutina(con), ej=AY.ejemplos(con))
 
 
 @app.get("/cargar", response_class=HTMLResponse)
@@ -689,50 +807,47 @@ def cargar(request: Request):
               "compras": [r[0] for r in con.execute("SELECT DISTINCT periodo FROM compra ORDER BY 1")],
               "lineas": con.execute("SELECT COUNT(*) FROM factura_linea").fetchone()[0]}
     return page(request, "cargar.html", estado=estado, msgs=request.session.pop("msgs", []), trabajos=trabajos,
+                pendiente=_pendiente(request.session.get("pendiente")), cal=CG.calendario(con),
                 en_curso=any(t["estado"] == "en curso" for t in trabajos))
+
+
+PENDIENTES = Path(DB_PATH).parent / "pendientes"
+
+
+def _post_importacion(con, tipos, msgs):
+    if "productos" in tipos:
+        n = S.detectar(con, avisar_desde=(date.today() - timedelta(days=30)).isoformat())
+        if n:
+            msgs.append(("ok", f"Detecté {len(n)} cambios nuevos en la carta (precios o productos). Míralos en Seguimiento."))
 
 
 @app.post("/cargar")
 async def cargar_post(request: Request):
+    """PDF y ZIP se leen en segundo plano. Los Excel de FUDO y el CSV del SII quedan en espera con una vista previa
+    de lo que van a cambiar, y se guardan al confirmar."""
     f = await form(request)
-    con, msgs, lote = db(), [], []
+    con, msgs, lote, previas = db(), [], [], []
+    token = secrets.token_hex(8)
+    carpeta = PENDIENTES / token
     for up in f.getlist("archivos"):
-        name = getattr(up, "filename", "") or ""
+        name = Path(getattr(up, "filename", "") or "").name
         if not name:
             continue
         data = await up.read()
+        low = name.lower()
         try:
-            if len(data) > (80 if name.lower().endswith(".zip") else 20) * 1024 * 1024:
+            if len(data) > (80 if low.endswith(".zip") else 20) * 1024 * 1024:
                 raise ValueError("archivo demasiado grande (máximo 20 MB, o 80 MB si es ZIP)")
-            with tempfile.NamedTemporaryFile(suffix=Path(name).suffix.lower()) as tmp:
-                tmp.write(data)
-                tmp.flush()
-                low = name.lower()
-                if low.endswith(".pdf") or low.endswith(".zip"):
-                    lote.append((name, data))
-                    continue
-                if low.endswith(".csv"):
-                    if "compra" not in low:
-                        raise ValueError("por ahora solo se carga el registro de COMPRAS del SII")
-                    from .importers.rcv import periodo_from_filename
-                    r = import_rcv_compras(con, tmp.name, periodo_from_filename(name))
-                    msgs.append(("ok", f"{name}: {r['documentos']} documentos de compra, periodo {r['periodo']}"))
-                elif low.endswith(".xlsx"):
-                    hojas = openpyxl.load_workbook(tmp.name, read_only=True).sheetnames
-                    if "Detalle" in hojas:
-                        msgs.append(("ok", f"{name}: {import_fudo_productos(con, tmp.name)['venta_producto']} filas de ventas por producto"))
-                        n = S.detectar(con, avisar_desde=(date.today() - timedelta(days=30)).isoformat())
-                        if n:
-                            msgs.append(("ok", f"Detecté {len(n)} cambios nuevos en la carta (precios o productos). Míralos en Seguimiento."))
-                    elif "Evolución de ventas" in hojas:
-                        msgs.append(("ok", f"{name}: {import_fudo_report(con, tmp.name)['venta_hora']} horas de venta"))
-                    else:
-                        raise ValueError("no reconozco este Excel (espero Reporte de Ventas o de Productos de FUDO)")
-                elif low.endswith(".toml"):
-                    F.seed_from_config(con, tomllib.loads(data.decode("utf-8")))
-                    msgs.append(("ok", f"{name}: configuración inicial cargada"))
-                else:
-                    raise ValueError("formato no soportado (.xlsx de FUDO, .csv del SII, PDF o ZIP de facturas)")
+            if low.endswith(".pdf") or low.endswith(".zip"):
+                lote.append((name, data))
+            elif low.endswith(".toml"):
+                F.seed_from_config(con, tomllib.loads(data.decode("utf-8")))
+                msgs.append(("ok", f"{name}: configuración inicial cargada"))
+            else:
+                carpeta.mkdir(parents=True, exist_ok=True)
+                ruta = carpeta / name
+                ruta.write_bytes(data)
+                previas.append(CG.vista_previa(con, name, str(ruta)))
         except Exception as e:  # se informa al usuario archivo por archivo
             msgs.append(("bad", f"{name}: {e}"))
     if lote:
@@ -741,5 +856,40 @@ async def cargar_post(request: Request):
         else:
             H.lanzar(DB_PATH, lote)
             msgs.append(("ok", "Estoy leyendo las facturas en segundo plano. El avance aparece aquí abajo; puedes seguir usando el panel."))
+    if previas:          # la vista previa queda junto a los archivos; la sesión solo guarda el código
+        (carpeta / "previa.json").write_text(json.dumps(previas, ensure_ascii=False))
+        request.session["pendiente"] = token
+    request.session["msgs"] = msgs
+    return RedirectResponse("/cargar", 303)
+
+
+def _pendiente(token):
+    if not token or not isinstance(token, str) or not token.isalnum():
+        return None
+    f = PENDIENTES / token / "previa.json"
+    return {"token": token, "previas": json.loads(f.read_text())} if f.exists() else None
+
+
+@app.post("/cargar/confirmar")
+async def cargar_confirmar(request: Request):
+    f = await form(request)
+    pend = _pendiente(request.session.pop("pendiente", None))
+    con, msgs, tipos = db(), [], set()
+    if pend and f.get("accion") == "guardar" and str(f.get("token")) == pend["token"]:
+        carpeta = PENDIENTES / pend["token"]
+        for x in pend["previas"]:
+            ruta = carpeta / x["nombre"]
+            try:
+                t, m = CG.importar(con, x["nombre"], str(ruta))
+                tipos.add(t)
+                msgs.append(("ok", m))
+            except Exception as e:
+                msgs.append(("bad", f"{x['nombre']}: {e}"))
+        _post_importacion(con, tipos, msgs)
+    elif pend:
+        msgs.append(("ok", "No se guardó nada."))
+    if pend:
+        import shutil
+        shutil.rmtree(PENDIENTES / pend["token"], ignore_errors=True)
     request.session["msgs"] = msgs
     return RedirectResponse("/cargar", 303)

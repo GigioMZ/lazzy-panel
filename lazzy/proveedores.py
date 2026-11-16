@@ -1,6 +1,7 @@
 """Proveedores: alias, productos comprados con su historial de precio, y vínculo de cada línea de factura
 con un producto de la carta o un insumo de receta, para que los costos se actualicen solos con cada factura."""
 import difflib
+import re
 from datetime import date
 
 from . import finance as F
@@ -81,6 +82,36 @@ def sugerir(con, clave):
         if mejor and len(pal & set(mejor.split())) / max(len(set(mejor.split())), 1) >= 0.99:
             m = [mejor]
     return {"tipo": opciones[m[0]][0], "destino": opciones[m[0]][1]} if m else None
+
+
+FORMATO = re.compile(r"(\d+(?:[.,]\d+)?)\s*(KG|KGS|KILO|G|GR|GRS|L|LT|LTS|ML|CC)\b", re.I)
+
+
+def formato(texto):
+    """«Q.LAM.400G.GAUDA» → (400, 'g'); «LECHE 1L» → (1000, 'ml'). Si no dice, (1, 'un')."""
+    m = FORMATO.search((texto or "").replace(".", " "))
+    if not m:
+        return 1.0, "un"
+    n, u = float(m.group(1).replace(",", ".")), m.group(2).lower()
+    if u in ("kg", "kgs", "kilo"):
+        return n * 1000, "g"
+    if u in ("l", "lt", "lts"):
+        return n * 1000, "ml"
+    return n, ("ml" if u in ("ml", "cc") else "g")
+
+
+def crear_insumo(con, rut, clave):
+    """Crea un insumo a partir de una línea de factura (nombre, formato y último precio) y lo deja vinculado."""
+    ln = lineas(con, rut, clave)
+    if not ln:
+        return None
+    texto = ln[-1].get("texto") or clave
+    cant, unidad = formato(texto)
+    nombre = " ".join(texto.replace(".", " ").split()).capitalize()[:60]
+    iid = con.execute("INSERT INTO insumo(nombre,unidad,cantidad_formato,precio_formato,actualizado) VALUES (?,?,?,?,?)",
+                      (nombre, unidad, cant, round(ln[-1]["precio_neto"]), ln[-1]["fecha_doc"])).lastrowid
+    con.commit()
+    return iid
 
 
 def vincular(con, rut, clave, tipo, destino, divisor=1.0):

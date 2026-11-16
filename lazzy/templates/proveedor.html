@@ -21,6 +21,7 @@
 <td>{{x.cantidad|num}} en {{x.veces}} factura{{'s' if x.veces != 1}}</td><td>{{x.fecha[8:10]}}-{{x.fecha[5:7]}}-{{x.fecha[:4]}}</td>
 <td class="l"><select name="d:{{x.clave}}" aria-label="Producto o insumo para {{x.texto}}"><option value="">No es de la carta</option>
 <optgroup label="Productos de la carta">{% for p in lista_p %}<option value="producto:{{p}}" {{'selected' if sel == 'producto:' ~ p}}>{{p}}</option>{% endfor %}</optgroup>
+<option value="nuevo:insumo">+ Crear insumo nuevo con esto</option>
 <optgroup label="Insumos de receta">{% for i in lista_i %}<option value="insumo:{{i.id}}" {{'selected' if sel == 'insumo:' ~ i.id}}>{{i.nombre}} ({{i.cantidad_formato|num}} {{i.unidad}})</option>{% endfor %}</optgroup></select>
 {% if x.sugerido and not v %}<br><span class="nota">Sugerido, revisa y guarda</span>{% endif %}</td>
 <td><input name="x:{{x.clave}}" value="{{(v.divisor if v else 1)|round(2)|string|replace('.0','')}}" inputmode="decimal" size="4" aria-label="Divide el precio por"></td></tr>{% endfor %}</table></div>

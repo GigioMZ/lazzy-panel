@@ -51,7 +51,7 @@ def test_paginas_y_edicion(tmp_path):
     from lazzy.finance import load_cfg
     assert load_cfg(con)["costo_producto"]["Latte"]["costo"] == 300
     c.post("/compras/proveedor", data={"csrf": csrf, "rut": "1-9", "nombre": "CAFE SA", "categoria": "cafe"})
-    assert load_cfg(con)["proveedores"] == {"1-9": "cafe"}
+    assert load_cfg(con)["proveedores"]["1-9"] == "cafe"
     c.post("/costos-fijos", data={"csrf": csrf, "nombre": "Sueldo", "categoria": "remuneraciones", "monto": "500.000", "desde": "2026-01"})
     c.post("/costos-fijos", data={"csrf": csrf, "accion": "ppm", "ppm": "0,25"})
     cfg = load_cfg(con)
@@ -85,6 +85,12 @@ def test_carga_archivo(tmp_path):
                                                       ("archivos", ("factura.pdf", b"x", "application/pdf"))])
     assert r.status_code == 303
     t = c.get("/cargar").text
-    assert "1 documentos de compra, periodo 2026-11" in t and "formato no soportado" in t
+    assert "Revisa antes de guardar" in t and "1 nuevos, 0 ya estaban" in t and "formato no soportado" in t
     assert "falta la clave de Anthropic" in t
+    assert con.execute("SELECT COUNT(*) FROM compra WHERE periodo='2026-11'").fetchone()[0] == 0   # aún no se guarda
+    import re
+    token = re.search(r'name="token" value="([0-9a-f]+)"', t).group(1)
+    c.post("/cargar/confirmar", data={"csrf": csrf, "token": token, "accion": "guardar"})
+    t = c.get("/cargar").text
+    assert "1 documentos de compra, periodo 2026-11" in t and "Calendario de datos" in t
     assert con.execute("SELECT COUNT(*) FROM compra WHERE periodo='2026-11'").fetchone()[0] == 1

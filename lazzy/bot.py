@@ -17,6 +17,9 @@ from . import analisis as A
 from . import captura as C
 from . import finance as F
 from . import insights as I
+from . import alertas as AL
+from . import iva as IVA
+from . import preguntas as P
 from . import seguimiento as S
 from .db import connect
 from .glosario import CATEGORIAS_UI
@@ -30,6 +33,11 @@ AYUDA = """Hola, soy el bot de Lazzy. Me puedes mandar:
 • Facturas en PDF o foto: las leo, te muestro lo que entendí y las guardo cuando confirmes.
 • Cuentas (luz, agua, etc.) en foto, o escritas: "luz 250730, agua 33209".
 • Los Excel de FUDO (Ventas y Productos) y el CSV de compras del SII: los cargo al panel.
+• El F29 en PDF: lo guardo y lo comparo con lo que estimó el panel.
+• Preguntas: "¿cuánto vendimos la semana pasada?", "¿qué producto deja menos?", "¿cómo va el mes contra la meta?".
+
+Además te aviso solo si un proveedor sube un precio, si un día vendió muy bajo lo normal, si no llega la factura de
+un proveedor habitual, o si el mes va bajo la meta.
 
 Comandos:
 /resumen: cómo va la semana
@@ -142,9 +150,11 @@ class Bot:
                 return self.proponer(chat, usuario, C.leer_imagen(self.con, datos), ruta)
             if texto:
                 self.tg("sendChatAction", chat_id=chat, action="typing")
+                if P.es_pregunta(texto):
+                    return self.tg.enviar(chat, P.responder(self.con, texto, hoy=datetime.now(ZONA).date()))
                 d = C.leer_texto(self.con, texto, hoy=datetime.now(ZONA).date())
-                if not d["gastos"]:
-                    return self.tg.enviar(chat, "No encontré ningún gasto en tu mensaje. Escribe por ejemplo «luz 250730, agua 33209» o mándame una factura.")
+                if not d["gastos"]:      # no era un gasto: se responde como pregunta
+                    return self.tg.enviar(chat, P.responder(self.con, texto, hoy=datetime.now(ZONA).date()))
                 return self.proponer(chat, usuario, d, None)
         except C.ErrorLectura as e:
             return self.tg.enviar(chat, f"No pude hacerlo: {e}")
@@ -166,6 +176,8 @@ class Bot:
         ruta = self.archivar(datos, nombre)
         if bajo.endswith(".pdf") or doc.get("mime_type") == "application/pdf":
             self.tg("sendChatAction", chat_id=chat, action="typing")
+            if IVA.es_f29(nombre, C.texto_pdf(datos)):
+                return self.tg.enviar(chat, self.f29(datos))
             return self.proponer(chat, usuario, C.leer_pdf(self.con, datos), ruta)
         if doc.get("mime_type", "").startswith("image/"):
             return self.proponer(chat, usuario, C.leer_imagen(self.con, datos, doc["mime_type"]), ruta)
@@ -189,6 +201,26 @@ class Bot:
             r = import_rcv_compras(self.con, ruta, per)
             return self.tg.enviar(chat, f"Cargué {r['documentos']} documentos de compra del SII de {I.mes_largo(per)}.\n\n" + estado_datos(self.con))
         return self.tg.enviar(chat, "No sé qué hacer con ese tipo de archivo. Mándame PDF, foto, Excel de FUDO o CSV del SII.")
+
+    def f29(self, datos):
+        d = IVA.leer_f29(self.con, datos)
+        per = IVA.guardar_f29(self.con, d)
+        cfg = F.load_cfg(self.con)
+        est = F.iva_mes(self.con, per, cfg)
+        dif = (d.get("total") or 0) - est["f29_estimado"]
+        txt = (f"Guardé el F29 de {I.mes_largo(per)}: total a pagar {I.clp(d.get('total') or 0)}. "
+               f"El panel había estimado {I.clp(est['f29_estimado'])} ({'+' if dif >= 0 else '-'}{I.clp(abs(dif))}).")
+        v = d.get("ventas_neto") or F.ventas_mes(self.con, per, cfg["empresa"]["iva"])["neto"]
+        if d.get("ppm") and v:
+            tasa = 100 * d["ppm"] / v
+            txt += f" La tasa de PPM que se desprende es {tasa:.2f}%".replace(".", ",")
+            if not cfg["empresa"].get("ppm_tasa"):
+                self.con.execute("INSERT OR REPLACE INTO parametro VALUES ('ppm_tasa', ?)", (str(round(tasa / 100, 5)),))
+                self.con.commit()
+                txt += "; la dejé configurada en el panel."
+            else:
+                txt += "."
+        return txt + " El detalle está en la página IVA."
 
     def proponer(self, chat, usuario, d, ruta):
         d = C.preparar(self.con, d)
@@ -272,6 +304,16 @@ def resumen_semana(con, hoy=None):
     est = A.estimacion(con, desde=lunes)
     if est["dias"]:
         lineas.append(f"Para esta semana se estiman {clp(est['total'])}.")
+    from . import metas as MT
+    per = hoy.strftime("%Y-%m")
+    meta = MT.leer(con, per).get("venta")
+    rit = MT.ritmo(con, F.load_cfg(con), per)
+    if meta and rit:
+        lineas.append(f"El mes va camino a {clp(rit['proy_venta'])} sin IVA; la meta es {clp(meta)} "
+                      f"({'la cumples' if rit['proy_venta'] >= meta else 'faltarían ' + clp(meta - rit['proy_venta'])}).")
+    ap = IVA.apartar(con, F.load_cfg(con), hoy)
+    lineas.append(f"IVA: aparta unos {clp(ap['por_semana'])} esta semana para el F29 de {I.mes_largo(ap['periodo'])} "
+                  f"(≈ {clp(ap['cierre'])}, se paga hasta el {ap['pago'].day}/{ap['pago'].month}).")
     if hoy.day <= 7:
         mes_ant = (hoy.replace(day=1) - timedelta(days=1)).strftime("%Y-%m")
         if not con.execute("SELECT 1 FROM compra WHERE periodo=? AND origen='sii' LIMIT 1", (mes_ant,)).fetchone():
@@ -343,6 +385,8 @@ def main():
                 log.info("cambiaron las claves; reiniciando")
                 raise SystemExit(0)
             ahora = datetime.now(ZONA)
+            if AL.toca(con, ahora):
+                AL.revisar(con, ahora.date())
             enviar_avisos(con, tg)
             if toca_resumen(con, ahora):
                 texto = resumen_semana(con)

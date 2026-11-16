@@ -8,6 +8,19 @@
 <p class="sub">Cada punto es un producto. Más a la derecha: se vende más. Más arriba: deja más plata por unidad. Pasa el mouse o toca un punto para ver cuál es.</p>
 <div class="grafico alto"><canvas id="cp" role="img" aria-label="Productos según unidades vendidas y plata que dejan por unidad"></canvas></div></section>{% endif %}
 
+<section class="dos bloque editar-p">
+<form class="panel" action="/receta" method="get"><h2>Editar un producto</h2><p class="sub">Precio, costo y receta de cualquier producto de FUDO.</p>
+<span class="fila"><input name="p" list="lista-p" placeholder="Escribe el nombre" aria-label="Producto" required><button class="btn">Abrir</button></span>
+<datalist id="lista-p">{% for t in todos %}<option value="{{t}}">{% endfor %}</datalist></form>
+<form class="panel" method="post" action="/producto"><input type="hidden" name="csrf" value="{{csrf}}"><h2>Crear un producto nuevo</h2>
+<p class="sub">Para armar su receta y precio antes de ponerlo en FUDO (por ejemplo, un sándwich nuevo).</p>
+<div class="campos tres"><label class="campo"><span>Nombre</span><input name="producto" required placeholder="Sándwich jamón queso"></label>
+<label class="campo"><span>Categoría</span><input name="categoria" list="lista-c" placeholder="Sandwiches"></label>
+<label class="campo"><span>Precio con IVA</span><input class="n" name="precio" inputmode="numeric" placeholder="4990"></label></div>
+<datalist id="lista-c">{% for c in cats_fudo %}<option value="{{c}}">{% endfor %}</datalist><button class="btn">Crear y armar receta</button></form>
+</section>
+{% if nuevos %}<p class="nota">Creados en el panel, todavía no en FUDO: {% for n in nuevos %}<a href="/receta?p={{n.producto|urlencode}}">{{n.producto}}</a>{{', ' if not loop.last}}{% endfor %}.</p>{% endif %}
+
 <section class="bloque" id="ofertas"><h2>Ofertas {{tip('ofertas')}}</h2>
 {% if of.actuales %}<p class="sub">Los combos que venden hoy, últimas 4 semanas.</p><div class="tabla"><table><tr><th class="l">Combo</th><th>Precio</th><th>Por separado</th><th>Descuento</th><th>Por semana</th><th>Tendencia</th><th>Deja c/u</th><th>Margen</th><th>Deja al mes</th></tr>
 {% for o in of.actuales %}<tr><td class="l w">{{o.producto}}<br><span class="nota">{{o.partes|join(' + ')}}</span></td><td>{{o.precio|clp}}</td><td>{{o.separado|clp if o.separado}}</td><td>{{(o.descuento|string ~ '%') if o.descuento is not none else '—'}}</td>

@@ -113,7 +113,36 @@ def _m4(con):
     """)
 
 
-MIGRACIONES = [_m1, _m2, _m3, _m4]
+def _m5(con):
+    """Productos creados en el panel, turnos, F29, alertas enviadas; corrige cantidades escritas en la descripción."""
+    con.executescript("""
+    CREATE TABLE IF NOT EXISTS producto_manual(producto TEXT PRIMARY KEY, categoria TEXT, precio INTEGER, creado TEXT);
+    CREATE TABLE IF NOT EXISTS turno(id INTEGER PRIMARY KEY, persona TEXT NOT NULL, dia INTEGER NOT NULL, desde TEXT NOT NULL,
+      hasta TEXT NOT NULL, en_resultado INTEGER NOT NULL DEFAULT 1);
+    CREATE TABLE IF NOT EXISTS f29(periodo TEXT PRIMARY KEY, debito INTEGER, credito INTEGER, ppm INTEGER, total INTEGER,
+      ventas_neto INTEGER, creado TEXT);
+    CREATE TABLE IF NOT EXISTS alerta(clave TEXT PRIMARY KEY, fecha TEXT);
+    """)
+    if not con.execute("SELECT 1 FROM turno").fetchone():
+        filas = [("Javi", d, "09:00", "16:30", 1) for d in range(5)] + [("Tupaj", d, "16:30", "21:30", 0) for d in range(5)]
+        filas.append(("Tupaj", 5, "10:00", "14:00", 0))
+        con.executemany("INSERT INTO turno(persona,dia,desde,hasta,en_resultado) VALUES (?,?,?,?,?)", filas)
+    # Comercial Los Lagos vende quesos y fiambres para los sándwiches que ahora hacen ustedes
+    con.execute("INSERT OR IGNORE INTO proveedor(rut,nombre,categoria) VALUES ('99583570-3','COMERCIAL LOS LAGOS S A','sandwiches')")
+    # desde noviembre 2026 los sándwiches se hacen en el local: termina el estimado del proveedor sin factura
+    con.execute("UPDATE costo_fijo SET hasta='2026-10' WHERE estimado=1 AND hasta IS NULL AND nombre LIKE 'S_ndwiches%'")
+    from .captura import _clave, cantidad_en_descripcion
+    for r in con.execute("SELECT rowid, * FROM factura_linea WHERE cantidad = 1 OR cantidad IS NULL").fetchall():
+        ln, cambio = cantidad_en_descripcion({"descripcion": r["texto"] or r["descripcion"], "cantidad": r["cantidad"],
+                                              "precio_neto": r["precio_neto"], "total_neto": r["total_neto"]})
+        if cambio:
+            nueva = _clave(ln["descripcion"])
+            con.execute("UPDATE factura_linea SET descripcion=?, texto=?, cantidad=?, precio_neto=? WHERE rowid=?",
+                        (nueva, ln["descripcion"], ln["cantidad"], ln["precio_neto"], r["rowid"]))
+            con.execute("UPDATE OR IGNORE vinculo SET clave=? WHERE rut=? AND clave=?", (nueva, r["rut"], r["descripcion"]))
+
+
+MIGRACIONES = [_m1, _m2, _m3, _m4, _m5]
 
 
 def migrar(con):

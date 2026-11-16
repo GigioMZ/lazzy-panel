@@ -17,5 +17,53 @@
 <label>Crédito <input class="n chico" name="comision_credito" value="{{ ('%g'|format(emp.comision_credito))|replace('.',',') if emp.comision_credito is not none else '' }}" inputmode="decimal" placeholder="ej. 2,0"> %</label>
 <button class="btn">Guardar tasas</button></form><p class="nota">Porcentaje sin IVA sobre el monto cobrado. Para usar el promedio de las facturas, borra los dos y guarda.</p></section>
 
+<section class="bloque" id="cuentas"><h2>Cuentas de luz y agua {{tip('cuentas_luz_agua')}}</h2>
+<p class="sub">Lo que llegó cada mes (por el bot o por factura) contra lo esperado. Si una cuenta sube más de 15%, el bot avisa.</p>
+<div class="dos"><div class="tabla"><table><tr><th>Mes</th><th>Luz</th><th>Esperado</th><th>Agua</th><th>Esperado</th></tr>
+{% for x in serv|reverse %}<tr><td>{{x.periodo|mes}}</td>{% for k in ('luz','agua') %}{% set v = x[k] %}<td>{% if v.real %}<b>{{v.real|clp}}</b>{% if v.real > v.esperado * 1.15 %} <span class="delta baja">+{{(100*(v.real/v.esperado-1))|round|int}}%</span>{% endif %}{% else %}<span class="nota">no llegó</span>{% endif %}</td><td class="nota">{{v.esperado|clp}}</td>{% endfor %}</tr>{% endfor %}</table></div>
+<div>{% if serv|selectattr('luz.real')|list or serv|selectattr('agua.real')|list %}<div class="grafico" style="height:220px"><canvas id="gServ" role="img" aria-label="Cuentas de luz y agua por mes"></canvas></div>{% endif %}
+<form class="fila" method="post" action="/turnos"><input type="hidden" name="csrf" value="{{csrf}}"><input type="hidden" name="accion" value="esperado">
+<label>Luz esperada <input class="n" name="luz" value="{{esp.luz}}" inputmode="numeric"></label><label>Agua esperada <input class="n" name="agua" value="{{esp.agua}}" inputmode="numeric"></label><button class="btn sec mini">Guardar</button></form>
+<p class="nota">Montos de la cuenta, con IVA. Mándenle al bot la foto de cada cuenta o escríbanla: «luz 250730».</p></div></div></section>
+
+<section class="bloque" id="turnos"><h2>Turnos y venta por hora {{tip('turnos')}}</h2>
+{% if msg %}<p class="aviso">{{msg}}</p>{% endif %}
+<p class="sub">Venta con IVA en las horas de cada turno, promedio de las últimas 8 semanas{% if tur.desde %} ({{tur.desde.day}}/{{tur.desde.month}} al {{tur.hasta.day}}/{{tur.hasta.month}}){% endif %}.</p>
+<div class="metas">{% for x in tur.personas %}<div class="meta-c"><div class="t">{{x.persona}}{% if not x.en_resultado %} <span class="nota">fuera del estado de resultados</span>{% endif %}</div>
+<div class="n">{{x.por_hora|clp}} <span class="nota">por hora</span></div><div class="d">{{x.horas_semana|round(1)|string|replace('.0','')|replace('.',',')}} horas a la semana, {{x.venta_semana|clp}} de venta en su turno.
+{% if x.costo_hora %} Cuesta unos {{x.costo_hora|clp}} la hora: vende {{x.veces|string|replace('.',',')}} veces lo que cuesta.{% endif %}</div>
+<form class="fila" method="post" action="/turnos" style="margin-top:8px"><input type="hidden" name="csrf" value="{{csrf}}"><input type="hidden" name="accion" value="pago"><input type="hidden" name="persona" value="{{x.persona}}">
+<input class="n" name="pago" value="{{x.pago or ''}}" placeholder="pago al mes" inputmode="numeric" aria-label="Pago mensual de {{x.persona}}"><button class="btn sec mini">Guardar</button></form>
+{% if not x.en_resultado %}<p class="nota">Solo se usa para esta comparación; no entra al estado de resultados.</p>{% endif %}</div>{% endfor %}</div>
+<div class="filtros" role="group" aria-label="Día">{% for d in range(6) %}<button type="button" class="chip" data-dia="{{d}}" aria-pressed="{{'true' if d == 0 else 'false'}}">{{dias[d]}}</button>{% endfor %}</div>
+<div class="grafico" style="height:240px"><canvas id="gHoras" role="img" aria-label="Venta promedio por hora y quién atiende"></canvas></div>
+<details class="panel anotar"><summary><b>Ver y cambiar turnos</b></summary>
+<div class="tabla"><table><tr><th class="l">Persona</th><th class="l">Día</th><th>Horario</th><th>Venta del turno por día</th><th>Ventas</th><th>Por hora</th><th></th></tr>
+{% for t in tur.turnos %}<tr><td class="l">{{t.persona}}</td><td class="l">{{t.dia_nombre}}</td><td>{{t.desde}} a {{t.hasta}}</td><td>{{t.venta_dia|clp}}</td><td>{{t.tickets_dia|string|replace('.',',')}}</td><td>{{t.por_hora|clp}}</td>
+<td><form method="post" action="/turnos"><input type="hidden" name="csrf" value="{{csrf}}"><input type="hidden" name="accion" value="borrar"><input type="hidden" name="id" value="{{t.id}}"><button class="btn sec mini">Quitar</button></form></td></tr>{% endfor %}</table></div>
+<form method="post" action="/turnos"><input type="hidden" name="csrf" value="{{csrf}}"><input type="hidden" name="accion" value="agregar">
+<div class="campos tres"><label class="campo"><span>Persona</span><input name="persona" required></label><label class="campo"><span>Desde</span><input type="time" name="desde" required></label><label class="campo"><span>Hasta</span><input type="time" name="hasta" required></label></div>
+<p class="radios">{% for d in range(7) %}<label><input type="checkbox" name="dia" value="{{d}}"> {{dias[d]}}</label>{% endfor %}</p>
+<p class="radios"><label><input type="checkbox" name="en_resultado" value="1" checked> Su sueldo está en el estado de resultados</label></p><button class="btn">Agregar turno</button></form></details></section>
+
 <section class="bloque"><h2>PPM {{ tip('ppm') }}</h2><p class="sub">Porcentaje de la venta sin IVA que se adelanta cada mes como impuesto a la renta. Pregúntale la tasa a la contadora o búscala en tu último formulario 29.</p>
 <form class="fila" method="post"><input type="hidden" name="csrf" value="{{csrf}}"><input type="hidden" name="accion" value="ppm"><label>Tasa de PPM <input class="n" name="ppm" value="{{'%g'|format(ppm)|replace('.',',')}}" inputmode="decimal"> %</label><button class="btn">Guardar tasa</button></form></section>{% endblock %}
+{% block js %}<script src="/static/chart.umd.js"></script><script>
+LZ.base();
+var G = {{graf|safe}};
+if (document.getElementById('gServ')) new Chart(document.getElementById('gServ'), {type: 'bar', data: {labels: G.serv.map(function (x) { return x.periodo.slice(5) + '/' + x.periodo.slice(2, 4); }),
+  datasets: [{label: 'Luz', data: G.serv.map(function (x) { return x.luz.real; }), backgroundColor: '#d6a300', borderRadius: 4, maxBarThickness: 28},
+             {label: 'Agua', data: G.serv.map(function (x) { return x.agua.real; }), backgroundColor: '#2f6f9f', borderRadius: 4, maxBarThickness: 28}]},
+  options: {plugins: {tooltip: {callbacks: {label: function (c) { return c.dataset.label + ': ' + (c.raw === null ? 'no llegó' : LZ.clp(c.raw)); }}}},
+    scales: {y: {ticks: {callback: LZ.corto, maxTicksLimit: 5}}, x: {grid: {display: false}}}}});
+var COL = {'Javi': '#2f6f9f', 'Tupaj': '#d9772b', 'Javi y Tupaj': '#6a52b8', 'nadie': '#c9c1ae'}, otros = ['#1f9e78', '#c94f63', '#d6a300'];
+function color(q) { if (!COL[q]) COL[q] = otros.shift() || '#9aa7b0'; return COL[q]; }
+var gh = new Chart(document.getElementById('gHoras'), {type: 'bar', data: {labels: [], datasets: [{data: [], backgroundColor: [], borderRadius: 4, maxBarThickness: 34}]},
+  options: {plugins: {legend: {display: false}, tooltip: {callbacks: {label: function (c) { var x = gh.$d[c.dataIndex]; return LZ.clp(x.venta) + ' con IVA, atiende ' + x.quien; }}}},
+    scales: {y: {ticks: {callback: LZ.corto, maxTicksLimit: 5}}, x: {grid: {display: false}}}}});
+function dia(d) { var h = G.horas[d] || []; gh.$d = h; gh.data.labels = h.map(function (x) { return x.hora + ':00'; });
+  gh.data.datasets[0].data = h.map(function (x) { return x.venta; }); gh.data.datasets[0].backgroundColor = h.map(function (x) { return color(x.quien); }); gh.update();
+  document.querySelectorAll('[data-dia]').forEach(function (b) { b.setAttribute('aria-pressed', String(+b.dataset.dia === d)); }); }
+document.querySelectorAll('[data-dia]').forEach(function (b) { b.addEventListener('click', function () { dia(+b.dataset.dia); }); });
+dia(0);
+</script>{% endblock %}
