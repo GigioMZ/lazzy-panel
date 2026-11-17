@@ -172,7 +172,15 @@ def buscar(con, texto):
     pal = set(t.split())
     cands = [(len(pal & set(k.split())) / max(len(pal), 1), -len(k), p) for k, p in ps.items() if pal & set(k.split())]
     cands = [c for c in cands if c[0] >= 0.99] or [c for c in cands if c[0] >= 0.6]
-    return max(cands)[2] if cands else None
+    if not cands or len([k for k in ps if pal <= set(k.split())]) > 1:
+        return None     # «cheesecake» puede ser berries, prestigio o choconaranja: mejor preguntar que adivinar
+    return max(cands)[2]
+
+
+def parecidos(con, texto):
+    """Productos que calzan con un nombre ambiguo («cheesecake» → los tres cheesecakes)."""
+    pal = set(F._norm(texto).split())
+    return [p for p in productos(con) if pal and pal <= set(F._norm(p).split())]
 
 
 def registrar_llegada(con, producto, cantidad, fecha=None, nota=None, origen="panel"):
@@ -232,7 +240,11 @@ def _items(con, texto):
             continue
         n, nombre = (m2.group(1), m2.group(2)) if m2.group(1)[0].isdigit() else (m2.group(2), m2.group(1))
         p = buscar(con, nombre)
-        (out.append((p, float(n.replace(",", ".")))) if p else faltan.append(nombre.strip()))
+        if p:
+            out.append((p, float(n.replace(",", "."))))
+        else:
+            ops = parecidos(con, nombre)
+            faltan.append(nombre.strip() + (f" (¿{', '.join(ops[:-1])} o {ops[-1]}?)" if len(ops) > 1 else ""))
     return {"items": out, "faltan": faltan, "motivo": motivo.strip()[:80] or None}
 
 

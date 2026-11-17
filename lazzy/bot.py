@@ -271,8 +271,11 @@ class Bot:
         cfg = F.load_cfg(self.con)
         for p, n in st["items"]:
             if st["tipo"] == "ajuste":
+                previo = self.con.execute("SELECT * FROM stock_conteo WHERE fecha=? AND producto=?", (hoy.isoformat(), p)).fetchone()
                 antes = ST.ajustar(self.con, p, n, hoy.isoformat(), corte_ahora_cl())
                 ref["conteos"].append([hoy.isoformat(), p])
+                if previo:      # el conteo del mismo día (p. ej. el Excel de FUDO) se reemplazó: /deshacer lo devuelve
+                    ref.setdefault("previos", []).append(dict(previo))
                 dif = n - antes if antes is not None else 0
                 costo = (cfg["costo_producto"].get(p) or {}).get("costo")
                 extra = "" if abs(dif) < 1 else (f" Esperaba {antes:g}: {'faltan' if dif < 0 else 'sobran'} {abs(dif):g}"
@@ -452,6 +455,10 @@ class Bot:
                 self.con.execute("DELETE FROM stock_entrada WHERE id=?", (i,))
             for fecha, p in ref["conteos"]:
                 self.con.execute("DELETE FROM stock_conteo WHERE fecha=? AND producto=? AND creado>=?", (fecha, p, f["creado"]))
+            for r in ref.get("previos", []):
+                cols = list(r)
+                self.con.execute(f"INSERT OR REPLACE INTO stock_conteo({','.join(cols)}) VALUES ({','.join('?' * len(cols))})",
+                                 [r[c] for c in cols])
         else:
             C.deshacer(self.con, ref, f["creado"])
         self.con.execute("UPDATE captura SET estado='deshecho' WHERE id=?", (f["id"],))

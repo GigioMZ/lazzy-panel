@@ -108,6 +108,9 @@ def test_conversacion_completa(b, monkeypatch):
     assert "+24 Brownies: ahora deberían quedar 34" in t and "+12 Cheesecake berries: ahora deberían quedar 18" in t
     # 3. ajustar lo que no calza, merma y llegadas sin factura
     assert "quedan 30. Esperaba 34: faltan 4" in enviar("quedan 30 brownies")
+    enviar("/deshacer")         # el ajuste del mismo día que el Excel no debe borrar el conteo del Excel
+    assert "Brownies: 34" in enviar("/stock")
+    assert "quedan 30. Esperaba 34: faltan 4" in enviar("quedan 30 brownies")
     t = enviar("se botaron 2 cheesecake berries por vencidos")
     assert "Anoté la merma (vencidos)" in t and "-2 Cheesecake berries: ahora deberían quedar 16" in t
     assert con.execute("SELECT origen FROM stock_entrada").fetchone()[0].startswith("merma")

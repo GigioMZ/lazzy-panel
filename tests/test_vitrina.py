@@ -109,3 +109,11 @@ def test_pagina_de_stock_con_vitrina_pedido_y_ajustes(tmp_path):
     assert r.status_code == 303 and VT.ajustes(con)["Latte"]["vida"] == 2 and VT.ajustes(con)["Latte"]["objetivo"] == 12
     t = c.get("/stock").text
     assert re.search(r"<b>12</b>", t)    # objetivo fijo 12; con las ventas atrasadas, lo que había ya se habría vendido
+
+
+def test_nombre_ambiguo_pregunta():
+    con = _base()
+    ST.guardar(con, [{"producto": "Cheesecake Prestigio", "cantidad": 3, "minimo": None}], "2026-11-01", "2026-11-01")
+    r = ST._items(con, "2 cheesecake")
+    assert r["items"] == [] and "¿Cheesecake Prestigio o Cheesecake berries?" in r["faltan"][0]
+    assert ST._items(con, "2 cheesecake berries")["items"] == [("Cheesecake berries", 2)]
