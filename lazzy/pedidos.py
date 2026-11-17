@@ -7,14 +7,59 @@ from datetime import date
 from . import finance as F
 from . import stock as ST
 from . import vitrina as VT
+from .insights import clp
 from .proveedores import nombre as nombre_prov
 
-DIAS = 7    # días entre pedidos si no se configuró otro
+DIAS = 7        # días entre pedidos si no se configuró otro
+MINIMO = 50000  # pedido mínimo de cada proveedor, con IVA, si no se configuró otro
 
 
 def dias_proveedor(con, rut):
     r = con.execute("SELECT valor FROM parametro WHERE clave=?", (f"pedido_dias:{rut}",)).fetchone()
     return int(float(r[0])) if r else DIAS
+
+
+def minimo_proveedor(con, rut):
+    r = con.execute("SELECT valor FROM parametro WHERE clave=?", (f"pedido_minimo:{rut}",)).fetchone()
+    return int(float(r[0])) if r else MINIMO
+
+
+def guardar_minimo(con, rut, monto):
+    con.execute("INSERT OR REPLACE INTO parametro VALUES (?,?)", (f"pedido_minimo:{rut}", str(int(monto))))
+    con.commit()
+
+
+def _unidades(i):
+    return i["packs"] * i["divisor"] if i["packs"] else i["pedir"]
+
+
+def _poner(i, unidades):
+    i["packs"] = math.ceil(unidades / i["divisor"]) if i["divisor"] and i["divisor"] > 1 else None
+    i["pedir"] = _unidades(i) if i["packs"] else unidades
+
+
+def completar_minimo(g, costos, iva):
+    """Si el pedido no llega al mínimo del proveedor, adelanta unidades de lo que se acaba antes (lo que menos días
+    alcanza a cubrir) hasta llegar. Si ni adelantando 3 períodos llega, lo deja y avisa que conviene juntar."""
+    precio = {i["producto"]: costos.get(i["producto"]) for i in g["items"]}
+    valor = lambda: round(sum(_unidades(i) * (precio[i["producto"]] or 0) for i in g["items"]) * (1 + iva))
+    g["valor"], g["agregado"], g["no_alcanza"] = valor(), {}, False
+    g["sin_precio"] = [i["producto"] for i in g["items"] if i["pedir"] and not precio[i["producto"]]]
+    if not g["total"] or not g["rut"] or g["valor"] >= g["minimo"]:
+        return g
+    candidatos = [i for i in g["items"] if i["ritmo"] > 0 and precio[i["producto"]]]
+    tope = 3 * g["dias"]
+    while candidatos and valor() < g["minimo"]:
+        i = min(candidatos, key=lambda i: (i["hoy"] + _unidades(i)) / i["ritmo"])
+        if (i["hoy"] + _unidades(i)) / i["ritmo"] >= tope:
+            break
+        antes = _unidades(i)
+        _poner(i, antes + (i["divisor"] if i["divisor"] and i["divisor"] > 1 else 1))
+        g["agregado"][i["producto"]] = g["agregado"].get(i["producto"], 0) + _unidades(i) - antes
+    g["valor"] = valor()
+    g["no_alcanza"] = g["valor"] < g["minimo"]
+    g["total"] = sum(1 for i in g["items"] if i["pedir"])
+    return g
 
 
 def guardar_dias(con, rut, dias):
@@ -72,9 +117,12 @@ def sugerido(con, cfg, hoy=None):
         g["items"].append({"producto": p, "ritmo": round(v, 1), "hoy": round(hoy_q, 1), "objetivo": objetivo, "fijo": fijo is not None,
                            "pedir": pedir, "texto": texto if rut else p, "divisor": div, "seguro": seguro,
                            "packs": math.ceil(pedir / div) if div and div > 1 else None})
+    costos = {p: (c or {}).get("costo") for p, c in cfg["costo_producto"].items()}
     for g in grupos.values():
-        g["items"].sort(key=lambda i: (-i["pedir"], i["producto"]))
         g["total"] = sum(1 for i in g["items"] if i["pedir"])
+        g["minimo"] = minimo_proveedor(con, g["rut"]) if g["rut"] else 0
+        completar_minimo(g, costos, cfg["empresa"]["iva"])
+        g["items"].sort(key=lambda i: (-i["pedir"], i["producto"]))
     return sorted(grupos.values(), key=lambda g: (g["rut"] == "", -g["total"], g["nombre"]))
 
 
@@ -95,6 +143,15 @@ def texto_bot(g, ult=None):
     for i in g["items"]:
         base = f"objetivo fijo {i['objetivo']:g}" if i["fijo"] else f"vende {i['ritmo']:g}/día".replace(".", ",")
         t.append(f"• {i['producto']}: hay ~{round(i['hoy']):g}, {base} → pedir {i['pedir']:g}" + ("" if i["seguro"] or not g["rut"] else " (proveedor probable)"))
+    if g["total"] and g["rut"]:
+        t.append(f"Total aprox.: {clp(g['valor'])} con IVA (mínimo {clp(g['minimo'])})")
+        if g["agregado"]:
+            t.append("Para llegar al mínimo adelanté: " + ", ".join(f"+{q:g} {p}" for p, q in g["agregado"].items())
+                     + " (lo que se acaba antes)")
+        if g["no_alcanza"]:
+            t.append("⚠️ Ni adelantando 3 pedidos llega al mínimo: conviene juntarlo con el próximo o con otro producto de este proveedor.")
+        if g["sin_precio"]:
+            t.append("Sin costo cargado (no suman al total): " + ", ".join(g["sin_precio"]))
     if g["total"]:
         t.append("\nPara copiar:\n" + mensaje(g))
     else:

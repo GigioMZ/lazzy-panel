@@ -83,8 +83,17 @@ def test_pedido_sugerido():
     # la factura de octubre es anterior al conteo: no suma. Objetivo 2 × 14 + 4 = 32 → pedir 14 = 3 cajas de 6
     assert (g["dias"], ch["objetivo"], ch["pedir"], ch["packs"]) == (14, 32, 14, 3)
     assert "- 3 × cheesecake berries individual (14 unidades)" in PD.mensaje(g)
+    assert g["valor"] == round(18 * 2605 * 1.19) and not g["agregado"]       # 3 cajas = $55.802 con IVA: pasa el mínimo
     VT.guardar_ajuste(con, "Cheesecake berries", objetivo=20)
-    assert PD.buscar_grupo(PD.sugerido(con, cfg, hoy), "cake")[0]["items"][0]["pedir"] == 2
+    g = PD.buscar_grupo(PD.sugerido(con, cfg, hoy), "cake")[0]
+    # faltan 2 = 1 caja de 6 ($18.600): no llega a $50.000, así que adelanta cajas hasta pasarlo
+    assert (g["items"][0]["packs"], g["agregado"], g["no_alcanza"]) == (3, {"Cheesecake berries": 12}, False)
+    assert "Para llegar al mínimo adelanté: +12 Cheesecake berries" in PD.texto_bot(g)
+    PD.guardar_minimo(con, "77323879-0", 0)
+    g = PD.buscar_grupo(PD.sugerido(con, cfg, hoy), "cake")[0]
+    assert (g["items"][0]["pedir"], g["items"][0]["packs"]) == (2, 1)
+    PD.guardar_minimo(con, "77323879-0", 500000)
+    assert PD.buscar_grupo(PD.sugerido(con, cfg, hoy), "cake")[0]["no_alcanza"]
 
 
 def test_pagina_de_stock_con_vitrina_pedido_y_ajustes(tmp_path):

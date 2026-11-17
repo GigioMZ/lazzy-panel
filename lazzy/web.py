@@ -585,7 +585,7 @@ def stock_page(request: Request):
                "proveedor": (pa.get(p) or {}).get("proveedor") or ""} for p in ST.productos(con)]
     pedidos = PD.sugerido(con, cfg)
     return page(request, "stock.html", vitrina=sorted(VT.estado(con), key=lambda x: (x["dias"], x["producto"])), pedidos=pedidos,
-                ajuste=ajuste, provs=provs, dias_prov=[(g["rut"], g["nombre"], g["dias"]) for g in pedidos if g["rut"]],
+                ajuste=ajuste, provs=provs, dias_prov=[(g["rut"], g["nombre"], g["dias"], g["minimo"]) for g in pedidos if g["rut"]],
                 mensaje_pedido=PD.mensaje, sug=ST.sugerencias(con), entradas=entradas, prods=ST.productos(con),
                 hoy=date.today().isoformat(), msg=request.session.pop("msg", None), filas=filas, ajustes=aj, ultimo=ult, sin_vinculo=sin_vinculo,
                 valor=sum(f["valor"] or 0 for f in filas), merma=ST.merma_mes(con, mes, cfg), mes=mes,
@@ -625,6 +625,10 @@ async def stock_post(request: Request):
                 d = num(k)
                 if d and d > 0:
                     PD.guardar_dias(con, str(k)[5:], d)
+            if str(k).startswith("min:"):
+                d = num(str(k))
+                if d is not None and d >= 0:
+                    PD.guardar_minimo(con, str(k)[4:], d)
         request.session["msg"] = "Ajustes guardados."
     elif acc == "vincular":
         for v in f.getlist("v"):
