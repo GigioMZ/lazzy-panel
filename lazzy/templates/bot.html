@@ -24,13 +24,13 @@
 <li><p><b>Factura en PDF o foto.</b> El bot muestra lo que leyó (proveedor, productos, precios sin IVA) y espera que confirmes. Si un proveedor subió un precio, avisa.</p></li>
 <li><p><b>Cuenta de luz, agua u otra, en foto o escrita</b>, por ejemplo «luz 250730, agua 33209». Ese mes deja de contarse el gasto estimado de esa categoría y se usa el real.</p></li>
 <li><p><b>Excel de FUDO</b> (Ventas y Productos) y <b>CSV de compras del SII</b>: se cargan igual que en «Subir archivos».</p></li>
-<li><p><b>/resumen</b> para ver cómo va la semana, y <b>/deshacer</b> para borrar lo último guardado. Los lunes a las 9:00 el bot manda el resumen solo.</p></li></ul></section>
+<li><p><b>/resumen</b> para ver cómo va la semana, y <b>/deshacer</b> para borrar lo último guardado. Los lunes a las 9:00 el bot manda el resumen solo, y a las 9:30 recuerda lo que falta: a Javi lo suyo (facturas, vitrina, pedidos) y a Guille lo de FUDO, SII e impuestos.</p></li></ul></section>
 
 <section class="bloque"><h2>Lo último que llegó</h2><div class="tabla"><table><tr><th>Fecha</th><th class="l">Quién</th><th class="l">Qué</th><th>Total</th><th class="l">Estado</th></tr>
 {% for c in caps %}<tr><td>{{c.creado[8:10]}}-{{c.creado[5:7]}} {{c.creado[11:16]}}</td><td class="l">{{c.usuario}}</td>
-<td class="l w">{% if c.d.clase == 'gastos' %}{{ c.d.gastos|map(attribute='concepto')|join(', ') }}{% else %}{{c.d.razon_social or c.d.concepto}}{% if c.d.folio %} (folio {{c.d.folio}}){% endif %}{% endif %}</td>
-<td>{% if c.d.clase == 'gastos' %}{{ c.d.gastos|sum(attribute='monto')|clp }}{% else %}{{c.d.total|clp}}{% endif %}</td>
-<td class="l"><span class="st {{ {'guardado':'ok','pendiente':'warn','descartado':'neutro','deshecho':'neutro'}[c.estado] }}">{{ {'guardado':'Guardado','pendiente':'Esperando confirmación','descartado':'Descartado','deshecho':'Deshecho'}[c.estado] }}</span></td></tr>{% endfor %}
+<td class="l w">{% if c.d.clase == 'gastos' %}{{ c.d.gastos|map(attribute='concepto')|join(', ') }}{% elif c.d.clase == 'stock' %}{{ (c.d.texto or 'Stock')|replace('\n', ' ')|truncate(90) }}{% else %}{{c.d.razon_social or c.d.concepto or 'Documento'}}{% if c.d.folio %} (folio {{c.d.folio}}){% endif %}{% endif %}</td>
+<td>{% if c.d.clase == 'gastos' %}{{ (c.d.gastos or [])|sum(attribute='monto')|clp }}{% elif c.d.get('total') is not none %}{{c.d.total|clp}}{% else %}—{% endif %}</td>
+<td class="l"><span class="st {{ {'guardado':'ok','pendiente':'warn','descartado':'neutro','deshecho':'neutro'}.get(c.estado, 'neutro') }}">{{ {'guardado':'Guardado','pendiente':'Esperando confirmación','descartado':'Descartado','deshecho':'Deshecho'}.get(c.estado, c.estado) }}</span></td></tr>{% endfor %}
 {% if not caps %}<tr><td colspan="5" class="l">Todavía no llega nada por el bot.</td></tr>{% endif %}</table></div></section>
 
 <section class="bloque"><h2>Uso de la API este mes</h2><p class="sub">{{uso.n}} lecturas con Claude Haiku: {{uso.e|num}} tokens de entrada y {{uso.s|num}} de salida. El costo exacto aparece en console.anthropic.com, sección Usage.</p></section>{% endblock %}

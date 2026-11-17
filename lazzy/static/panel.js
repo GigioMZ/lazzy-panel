@@ -24,6 +24,7 @@
 window.LZ = {
   azul: '#2f6f9f', oro: '#b8860b', tinta: '#203548', tinta2: '#51636f', linea: '#eadfc4', papel: '#fffcf5',
   clp: function (v) { return (v < 0 ? '-' : '') + '$' + Math.abs(Math.round(v)).toLocaleString('es-CL'); },
+  dosLineas: function (v) { var l = this.getLabelForValue(v); return (typeof l === 'string' && l.indexOf(' ') > 0) ? l.split(' ') : l; },
   corto: function (v) { var a = Math.abs(v); if (!a) return '$0'; return (v < 0 ? '-' : '') + '$' + (a >= 1e6 ? (a / 1e6).toLocaleString('es-CL', { maximumFractionDigits: 1 }) + ' M' : Math.round(a / 1000) + ' mil'); },
   base: function () {
     if (!window.Chart) return;

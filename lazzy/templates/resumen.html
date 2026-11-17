@@ -75,7 +75,7 @@ LZ.base(); const D={{chart|safe}};
 new Chart(document.getElementById('c1'),{data:{labels:D.labels,datasets:[
  {type:'line',label:'Ganancia',data:D.ganancia,borderColor:LZ.oro,backgroundColor:LZ.oro,borderWidth:2,pointRadius:5,pointHoverRadius:7,pointBorderColor:LZ.papel,pointBorderWidth:2,spanGaps:false,order:1},
  {type:'bar',label:'Ventas sin IVA',data:D.ventas,backgroundColor:LZ.azul,maxBarThickness:24,borderRadius:{topLeft:4,topRight:4},order:2}]},
- options:{interaction:{mode:'index',intersect:false},scales:{x:{grid:{display:false},ticks:{maxRotation:0,autoSkip:false}},y:{ticks:{callback:LZ.corto,maxTicksLimit:6}}},
+ options:{interaction:{mode:'index',intersect:false},scales:{x:{grid:{display:false},ticks:{maxRotation:0,autoSkip:false,callback:LZ.dosLineas}},y:{ticks:{callback:LZ.corto,maxTicksLimit:6}}},
  plugins:{legend:{reverse:true},tooltip:{callbacks:{label:c=>c.dataset.label+': '+(c.raw==null?'sin datos':LZ.clp(c.raw))}}}}});
 new Chart(document.getElementById('c2'),{type:'bar',data:{labels:D.horas.map(h=>h.hora+' h'),datasets:[{label:'Venta con IVA',data:D.horas.map(h=>h.bruto),backgroundColor:LZ.azul,maxBarThickness:24,borderRadius:{topLeft:4,topRight:4}}]},
  options:{plugins:{legend:{display:false},tooltip:{callbacks:{title:t=>'Entre las '+parseInt(t[0].label)+':00 y las '+(parseInt(t[0].label)+1)+':00',label:c=>LZ.clp(c.raw)+' en '+D.horas[c.dataIndex].tickets+' ventas'}}},scales:{x:{grid:{display:false},ticks:{maxRotation:0}},y:{ticks:{callback:LZ.corto,maxTicksLimit:6}}}}});
