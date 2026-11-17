@@ -113,7 +113,7 @@ def test_pagina_de_stock_con_vitrina_pedido_y_ajustes(tmp_path):
 
 def test_nombre_ambiguo_pregunta():
     con = _base()
-    ST.guardar(con, [{"producto": "Cheesecake Prestigio", "cantidad": 3, "minimo": None}], "2026-11-01", "2026-11-01")
+    con.execute("INSERT INTO stock_conteo(fecha,producto,cantidad,corte) VALUES ('2026-11-01','Cheesecake Prestigio',3,'2026-11-01')")
     r = ST._items(con, "2 cheesecake")
     assert r["items"] == [] and "¿Cheesecake Prestigio o Cheesecake berries?" in r["faltan"][0]
     assert ST._items(con, "2 cheesecake berries")["items"] == [("Cheesecake berries", 2)]
