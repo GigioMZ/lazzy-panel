@@ -19,27 +19,66 @@ def rutina(con, hoy=None):
     st = con.execute("SELECT MAX(fecha) FROM stock_conteo").fetchone()[0]
     vt = con.execute("SELECT MAX(fecha) FROM vitrina").fetchone()[0]
     return [
-        {"cuando": "Cada día", "que": "Mandar al bot cada factura apenas llega (PDF o foto) y las cuentas de luz y agua.",
+        {"quien": "javi", "corto": "Mandar las facturas al bot", "cuando": "Cada día", "que": "Mandar al bot cada factura apenas llega (PDF o foto) y las cuentas de luz y agua.",
          "ok": bool(bot and (hoy - date.fromisoformat(bot)).days <= 4), "estado": f"última por el bot: {bot}" if bot else "ninguna todavía"},
-        {"cuando": "Cada vez que saquen algo del congelador", "que": "Escribirle al bot lo que salió a vitrina: «saqué 8 cheesecake berries, 4 brownies». "
+        {"quien": "javi", "corto": "Anotar lo que sale a vitrina", "cuando": "Cada vez que saquen algo del congelador", "que": "Escribirle al bot lo que salió a vitrina: «saqué 8 cheesecake berries, 4 brownies». "
          "Con eso avisa el último día de cada tanda.", "ok": bool(vt and (hoy - date.fromisoformat(vt)).days <= 3),
          "estado": f"última anotada: {vt}" if vt else "nada anotado todavía", "url": "/stock"},
-        {"cuando": "Antes de cada pedido", "que": "Pedir al bot /pedido (o mirar Stock): sale lo que hay que pedir a cada proveedor, listo para copiar.",
+        {"quien": "javi", "corto": "Revisar el pedido sugerido", "cuando": "Antes de cada pedido", "que": "Pedir al bot /pedido (o mirar Stock): sale lo que hay que pedir a cada proveedor, listo para copiar.",
          "ok": None, "url": "/stock"},
-        {"cuando": "Lunes", "que": "Subir los dos reportes de FUDO (Ventas y Productos), desde el día 1 del mes hasta el domingo.",
+        {"quien": "guille", "frec": "semanal", "corto": "Subir ventas y productos de FUDO", "cuando": "Lunes", "que": "Subir los dos reportes de FUDO (Ventas y Productos), desde el día 1 del mes hasta el domingo.",
          "ok": bool(uv and up and uv >= domingo.isoformat() and up >= domingo.isoformat()),
          "estado": f"cargado hasta el {uv}" if uv else "nada cargado", "url": "/cargar"},
-        {"cuando": "Con cada ajuste y al cierre del mes", "que": "Exportar el stock de FUDO y subirlo (o mandarlo al bot): cuando anoten merma, "
+        {"quien": "guille", "frec": "mensual", "corto": "Subir el stock de FUDO", "cuando": "Con cada ajuste y al cierre del mes", "que": "Exportar el stock de FUDO y subirlo (o mandarlo al bot): cuando anoten merma, "
          "después de contar la vitrina y el último día del mes.", "ok": bool(st and (hoy - date.fromisoformat(st)).days <= 10),
          "estado": f"último stock: {st}" if st else "todavía no hay stock cargado", "url": "/stock"},
-        {"cuando": "Lunes", "que": "Leer el resumen del bot y mirar el Tablero y Seguimiento (5 minutos).", "ok": None, "url": "/"},
-        {"cuando": "Primeros días del mes", "que": f"Descargar del SII el registro de compras de {I.mes_largo(ant)} y subirlo.",
+        {"quien": "todos", "corto": "Leer el resumen de la semana", "cuando": "Lunes", "que": "Leer el resumen del bot y mirar el Tablero y Seguimiento (5 minutos).", "ok": None, "url": "/"},
+        {"quien": "guille", "frec": "mensual", "corto": f"Subir compras del SII de {I.mes_largo(ant)}", "cuando": "Primeros días del mes", "que": f"Descargar del SII el registro de compras de {I.mes_largo(ant)} y subirlo.",
          "ok": bool(sii), "estado": "listo" if sii else "falta", "url": "/cargar"},
-        {"cuando": "Primeros días del mes", "que": "Revisar la lista de cierre del mes anterior y clasificar proveedores nuevos.",
+        {"quien": "guille", "corto": "Revisar el cierre del mes", "cuando": "Primeros días del mes", "que": "Revisar la lista de cierre del mes anterior y clasificar proveedores nuevos.",
          "ok": None, "url": f"/mes?periodo={ant}"},
-        {"cuando": f"Hasta el {pago.day}/{pago.month}", "que": f"Pagar el F29 de {I.mes_largo(ant)} y mandarle el PDF al bot.",
+        {"quien": "guille", "frec": "mensual", "corto": f"Pagar el F29 (hasta el {pago.day}/{pago.month})", "pago": pago,
+         "cuando": f"Hasta el {pago.day}/{pago.month}", "que": f"Pagar el F29 de {I.mes_largo(ant)} y mandarle el PDF al bot.",
          "ok": bool(f29), "estado": "recibido" if f29 else "falta el PDF", "url": "/impuestos"},
     ]
+
+
+def pendientes(con, hoy=None):
+    """Lo que falta hacer ahora (para la campanita del panel): tareas de la rutina sin hacer y vínculos de stock por revisar."""
+    from . import stock as ST
+    hoy = hoy or date.today()
+    out = [{"texto": r["corto"], "detalle": r.get("estado"), "url": r.get("url", "/ayuda"), "quien": r["quien"]}
+           for r in rutina(con, hoy) if r["ok"] is False]
+    n = len(ST.sugerencias(con))
+    if n:
+        out.append({"texto": f"Vincular {n} producto{'s' if n > 1 else ''} de facturas con el stock", "detalle": "un clic cada uno",
+                    "url": "/stock", "quien": "guille"})
+    return out
+
+
+def recordatorios(con, hoy=None):
+    """Lo que el bot recuerda a las 9:30, por persona: los lunes todo lo pendiente de la semana y del mes; el día 1, lo del
+    cierre; el último día del mes, exportar el stock; y el F29 tres días antes de su vencimiento y el mismo día."""
+    hoy = hoy or date.today()
+    tareas = [r for r in rutina(con, hoy) if r.get("frec")]
+    manana = hoy + timedelta(days=1)
+    porq = {}
+
+    def agregar(quien, texto):
+        for q in (("javi", "guille") if quien == "todos" else (quien,)):
+            if texto not in porq.setdefault(q, []):
+                porq[q].append(texto)
+    for r in tareas:
+        if r["ok"] is not False:
+            continue
+        if hoy.weekday() == 0 or (hoy.day == 1 and r["frec"] == "mensual"):
+            agregar(r["quien"], r["corto"] + (f" ({r['estado']})" if r.get("estado") and r["frec"] == "semanal" else ""))
+        if r.get("pago") and (r["pago"] - hoy).days in (3, 0):
+            agregar(r["quien"], r["corto"] + (": vence hoy" if r["pago"] == hoy else ": vence en 3 días"))
+    if manana.month != hoy.month:
+        agregar("guille", "Hoy es el último día del mes: al cerrar, exportar el stock de FUDO y subirlo (o mandárselo al bot)")
+    return {q: "⏰ Para hoy:\n" + "\n".join(f"• {t}" for t in ts) + "\n\nTodo en https://panel.lazzycoffee.cl/ayuda"
+            for q, ts in porq.items() if ts}
 
 
 def ejemplos(con):

@@ -631,6 +631,20 @@ def enviar_avisos(con, tg):
         con.commit()
 
 
+def rol_chat(usuario):
+    """A quién le toca cada recordatorio: Javi (facturas, vitrina, pedidos) o Guille (FUDO, SII, F29)."""
+    return "javi" if "javi" in (usuario or "").lower() else "guille"
+
+
+def enviar_recordatorios(con, tg, hoy):
+    from . import ayuda as A
+    textos = A.recordatorios(con, hoy)
+    for r in con.execute("SELECT chat_id, usuario FROM telegram_chat").fetchall():
+        t = textos.get(rol_chat(r["usuario"]))
+        if t:
+            tg.enviar(r["chat_id"], t)
+
+
 def main():
     from . import claves
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -663,6 +677,7 @@ def main():
             ahora = datetime.now(ZONA)
             if AL.toca(con, ahora):
                 AL.revisar(con, ahora.date())
+                enviar_recordatorios(con, tg, ahora.date())
             enviar_avisos(con, tg)
             if toca_resumen(con, ahora):
                 texto = resumen_semana(con)

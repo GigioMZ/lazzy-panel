@@ -43,8 +43,11 @@
 {% for a in ajuste %}<tr><td class="l">{{a.producto}}</td><td><input class="n" name="vida:{{a.producto}}" value="{{a.vida}}" inputmode="numeric" style="width:60px" aria-label="Días en vitrina de {{a.producto}}"></td>
 <td><input class="n" name="obj:{{a.producto}}" value="{{a.objetivo|round|int if a.objetivo is not none else ''}}" inputmode="decimal" style="width:70px" placeholder="auto" aria-label="Objetivo fijo de {{a.producto}}"></td>
 <td class="l"><select name="prov:{{a.producto}}" aria-label="Proveedor de {{a.producto}}"><option value="">(según factura)</option>{% for r, n in provs %}<option value="{{r}}" {{'selected' if r == a.proveedor}}>{{n}}</option>{% endfor %}</select></td></tr>{% endfor %}</table></div>
-{% if dias_prov %}<p class="fila" style="flex-wrap:wrap;gap:12px">{% for r, n, d, m in dias_prov %}<label>{{n}}: pedido cada <input class="n" name="dias:{{r}}" value="{{d}}" inputmode="numeric" style="width:50px"> días, mínimo $<input class="n" name="min:{{r}}" value="{{m}}" inputmode="numeric" style="width:80px"> con IVA</label>{% endfor %}</p>{% endif %}
-<button class="btn">Guardar ajustes</button></form>
+{% if dias_prov %}<h3 style="margin:22px 0 8px">Por proveedor</h3>
+<div class="tabla" style="max-width:720px"><table><tr><th class="l">Proveedor</th><th>Pedido cada (días)</th><th>Pedido mínimo, con IVA</th></tr>
+{% for r, n, d, m in dias_prov %}<tr><td class="l">{{n}}</td><td><input class="n" name="dias:{{r}}" value="{{d}}" inputmode="numeric" style="width:64px" aria-label="Días entre pedidos de {{n}}"></td>
+<td>$ <input class="n" name="min:{{r}}" value="{{m}}" inputmode="numeric" style="width:96px" aria-label="Pedido mínimo de {{n}}"></td></tr>{% endfor %}</table></div>{% endif %}
+<p style="margin-top:14px"><button class="btn">Guardar ajustes</button></p></form>
 
 <section class="bloque"><h2>Llegadas sin factura</h2>
 <p class="sub">Para lo que llega sin una factura propia, como los sándwiches que se traen hechos. Por el bot: «llegaron 10 ciabatta jamón queso y 6 salame».</p>

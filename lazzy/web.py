@@ -1,5 +1,6 @@
 """Panel web. Ejecutar: uvicorn lazzy.web:app  (variables: LAZZY_DB, LAZZY_SECRET, LAZZY_HTTPS=1)."""
 import json
+import logging
 from urllib.parse import quote
 import os
 import secrets
@@ -36,6 +37,7 @@ from . import stock as ST
 from . import vitrina as VT
 from . import proveedores as PV
 from . import seguimiento as S
+from . import ayuda as AY
 from .auth import check_password
 from .db import connect
 from .glosario import CAT_NOMBRE, CATEGORIAS_UI, GLOSARIO, GRUPO_NOMBRE
@@ -120,7 +122,19 @@ def volver(f, defecto):
 def page(request, name, **ctx):
     u = request.session.get("user")
     return T.TemplateResponse(request, name, {"user": u, "csrf": request.session.get("csrf"), "cats": F.CATEGORIAS,
-                                              "nav": NAV, "fresc": I.frescura(db()) if u else None, **ctx})
+                                              "nav": NAV, "fresc": I.frescura(db()) if u else None,
+                                              "pend": _pendientes() if u else None, **ctx})
+
+
+log = logging.getLogger("lazzy.web")
+
+
+def _pendientes():
+    try:
+        return AY.pendientes(db())
+    except Exception:       # la campanita nunca debe botar una página
+        log.exception("pendientes")
+        return []
 
 
 def month_add(p, n):

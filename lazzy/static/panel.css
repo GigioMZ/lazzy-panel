@@ -329,3 +329,23 @@ input[type=date]{min-height:36px}
 .precio-f input.n{font:500 15px/1.3 "DM Sans",system-ui,sans-serif;width:90px;padding:6px 8px}
 .debiles>summary{cursor:pointer;padding:10px 0}.debiles .seg{margin-top:12px}
 .rango{align-items:center;flex-wrap:wrap;gap:8px}.rango label{display:inline-flex;gap:6px;align-items:center;font-size:14px}
+
+/* campanita de pendientes, arriba a la derecha */
+.barra-sup{display:flex;justify-content:flex-end;margin:-14px 0 4px;position:relative;z-index:20}
+.avisos{position:relative}
+.avisos summary{list-style:none;cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:99px;border:1px solid var(--linea);background:#fff;color:var(--tinta)}
+.avisos summary::-webkit-details-marker{display:none}
+.avisos summary:hover{background:var(--crema)}
+.avisos .cuenta{background:var(--sol);color:var(--tinta);border-radius:99px;min-width:20px;height:20px;font-size:12px;display:inline-flex;align-items:center;justify-content:center;padding:0 6px}
+.avisos-lista{position:absolute;right:0;top:calc(100% + 6px);width:340px;max-width:calc(100vw - 32px);background:#fff;border:1px solid var(--linea);border-radius:12px;box-shadow:0 10px 30px rgba(32,53,72,.14);padding:12px}
+.avisos-lista h3{margin:0 0 8px}
+.avisos-lista a{display:flex;gap:10px;align-items:flex-start;padding:8px;border-radius:8px;text-decoration:none}
+.avisos-lista a:hover{background:var(--linea-2)}
+.avisos-lista a b{display:block;font-weight:600;font-size:14px;line-height:1.3}
+.avisos-lista small{display:block;color:var(--tinta-2);font-size:12.5px}
+.avisos-lista .quien{flex:none;font-size:11.5px;font-weight:700;border-radius:6px;padding:2px 6px;margin-top:1px}
+.q-javi{background:#e7f0f8;color:var(--azul)}
+.q-guille{background:var(--warn-bg);color:var(--warn)}
+.q-todos{background:var(--ok-bg);color:var(--ok)}
+.avisos-lista .ver{display:block;text-align:center;font-size:13px;color:var(--tinta-2);margin-top:4px;border-top:1px solid var(--linea-2);border-radius:0;padding-top:10px}
+@media (max-width:860px){.barra-sup{margin:-6px 0 6px}}
